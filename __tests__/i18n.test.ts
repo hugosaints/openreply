@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createI18n, resolveLocale } from "../lib/i18n";
+import ptBR from "../lib/i18n/pt-BR.json";
 import zhTW from "../lib/i18n/zh-TW.json";
 
 describe("interface translations", () => {
@@ -46,13 +47,21 @@ describe("interface translations", () => {
     expect(createI18n("zh-TW").label("__proto__")).toBe("__proto__");
   });
 
+  it("renders pt-BR from the same keys", () => {
+    expect(createI18n("pt-BR").t("Campaigns")).toBe("Campanhas");
+    expect(createI18n("pt-BR").t("{count} connected accounts", { count: 2 })).toBe("2 contas conectadas");
+    expect(createI18n("pt-BR").label("SENT")).toBe("Enviado");
+  });
+
   it("has complete, plain-text translations with matching interpolation fields", () => {
     const placeholders = (text: string) =>
       [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
-    for (const [source, translation] of Object.entries(zhTW)) {
-      expect(translation.trim(), source).not.toBe("");
-      expect(placeholders(translation), source).toEqual(placeholders(source));
-      expect(source, source).not.toMatch(/&(?:[a-z]+|#\d+);/i);
+    for (const catalog of [zhTW, ptBR]) {
+      for (const [source, translation] of Object.entries(catalog)) {
+        expect(translation.trim(), source).not.toBe("");
+        expect(placeholders(translation), source).toEqual(placeholders(source));
+        expect(source, source).not.toMatch(/&(?:[a-z]+|#\d+);/i);
+      }
     }
   });
 });
