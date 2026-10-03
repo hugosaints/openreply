@@ -3,7 +3,9 @@ import type { I18n } from "@/lib/i18n";
 import { getI18n } from "@/lib/i18n/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Chip, Logo, heroGlow } from "@/components/public/ui";
 import { getCampaignReportBySlug } from "@/lib/reports/data";
+import { IconExternalLink } from "@tabler/icons-react";
 
 type ReportPageProps = {
   params: Promise<{ shareSlug: string }>;
@@ -28,15 +30,36 @@ function MetricCard({
   helper: string;
 }) {
   return (
-    <div className="border border-white/10 bg-white/[0.035] p-5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-        {label}
-      </p>
-      <p className="mt-3 text-3xl font-black tracking-tight text-white">
-        {value}
-      </p>
-      <p className="mt-2 text-xs leading-5 text-zinc-400">{helper}</p>
+    <div className="bg-surface p-5">
+      <p className="text-sm text-muted">{label}</p>
+      <p className="mt-2 font-heading text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+      <p className="mt-1.5 text-xs leading-5 text-subtle">{helper}</p>
     </div>
+  );
+}
+
+function Card({
+  title,
+  description,
+  aside,
+  children,
+}: {
+  title: string;
+  description?: string;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="panel rounded-2xl p-5 sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="font-heading text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+          {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+        </div>
+        {aside}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -77,43 +100,47 @@ export default async function ReportPage({ params }: ReportPageProps) {
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <section className="border-b border-white/10 bg-zinc-950/70">
-        <div className="mx-auto w-full max-w-6xl px-5 py-10 sm:px-6 lg:px-8">
+      <section className="relative isolate overflow-hidden border-b border-border">
+        <div aria-hidden="true" className={heroGlow} />
+        <div className="mx-auto w-full max-w-6xl px-5 py-10 sm:px-8">
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div>
-              <p className="text-sm font-bold uppercase tracking-wide text-cyan-200">
+              <span className="inline-flex items-center gap-2 rounded-full border border-accent-muted/70 bg-accent-soft px-3 py-1 text-xs font-medium text-accent">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                 {t("Client campaign report")}
-              </p>
-              <h1 className="mt-4 max-w-3xl text-4xl font-black leading-tight text-white sm:text-5xl">
+              </span>
+              <h1 className="mt-5 max-w-3xl font-heading text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
                 {report.campaign.name}
               </h1>
-              <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-muted">
                 <span>@{report.campaign.instagramUsername}</span>
                 {report.campaign.goal && (
                   <>
-                    <span>·</span>
+                    <span aria-hidden="true">·</span>
                     <span>{report.campaign.goal}</span>
                   </>
                 )}
-                <span>·</span>
-                <span>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    report.campaign.isActive ? "bg-success-soft text-success" : "bg-warning-soft text-warning"
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${report.campaign.isActive ? "bg-success" : "bg-warning"}`} />
                   {report.campaign.isActive ? t("Active campaign") : t("Paused campaign")}
                 </span>
               </div>
             </div>
 
-            <div className="border border-white/10 bg-white/[0.035] p-4 text-sm text-zinc-300 md:min-w-64">
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                {t("Workspace")}
-              </p>
-              <p className="mt-2 font-bold text-white">{report.workspace.name}</p>
-              <p className="mt-4 text-xs text-zinc-500">
+            <div className="panel rounded-2xl p-4 text-sm md:min-w-64">
+              <p className="text-xs font-medium text-subtle">{t("Workspace")}</p>
+              <p className="mt-1 font-heading text-base font-semibold text-foreground">{report.workspace.name}</p>
+              <p className="mt-3 text-xs text-muted">
                 {t("Generated")} {formatDate(report.generatedAt, { locale, t })}
               </p>
               {report.branded && (
                 <Link
                   href="/"
-                  className="mt-4 inline-flex items-center justify-center border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/40"
+                  className="mt-4 inline-flex h-8 items-center justify-center rounded-lg bg-accent-soft px-3 text-xs font-medium text-accent transition-colors hover:bg-accent-muted/60"
                 >
                   {t("Powered by OpenReply")}
                 </Link>
@@ -123,8 +150,8 @@ export default async function ReportPage({ params }: ReportPageProps) {
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-5 py-10 sm:px-6 lg:px-8">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="mx-auto w-full max-w-6xl space-y-6 px-5 py-10 sm:px-8">
+        <div className="panel-split grid-cols-2 gap-px bg-border sm:grid-cols-3 lg:grid-cols-5 [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
           <MetricCard
             label={t("DMs sent")}
             value={report.metrics.sent}
@@ -152,157 +179,127 @@ export default async function ReportPage({ params }: ReportPageProps) {
           />
         </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
-          <section className="border border-white/10 bg-white/[0.035] p-4 sm:p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-xl font-black text-white">
-                  {t("Last 7 Days")}
-                </h2>
-                <p className="mt-2 text-sm text-zinc-400">
-                  {t("Sent replies and tracked clicks by day.")}
-                </p>
-              </div>
-              <p className="text-xs text-zinc-500">
+        <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+          <Card
+            title={t("Last 7 Days")}
+            description={t("Sent replies and tracked clicks by day.")}
+            aside={
+              <p className="text-xs text-subtle">
                 {t("Last send:")} {formatDate(report.metrics.latestSentAt, { locale, t })}
               </p>
-            </div>
+            }
+          >
             <div className="mt-8 grid h-56 grid-cols-7 items-end gap-1.5 sm:gap-3">
               {report.daily.map((day) => (
                 <div key={day.date} className="flex h-full flex-col justify-end gap-2">
                   <div className="flex min-h-0 flex-1 items-end gap-1">
                     <div
-                      className="w-full bg-cyan-300/75"
+                      className="w-full rounded-t-md bg-accent"
                       style={{
                         height: `${Math.max((day.sent / maxDaily) * 100, 4)}%`,
                       }}
                       title={t("{count} sent", { count: day.sent })}
                     />
                     <div
-                      className="w-full bg-emerald-300/75"
+                      className="w-full rounded-t-md bg-success"
                       style={{
                         height: `${Math.max((day.clicks / maxDaily) * 100, 4)}%`,
                       }}
                       title={t("{count} clicks", { count: day.clicks })}
                     />
                   </div>
-                  <p className="truncate text-center text-[11px] text-zinc-500">
-                    {day.date}
-                  </p>
+                  <p className="truncate text-center text-[11px] text-subtle">{day.date}</p>
                 </div>
               ))}
             </div>
-            <div className="mt-5 flex flex-wrap gap-4 text-xs text-zinc-400">
+            <div className="mt-5 flex flex-wrap gap-4 text-xs text-muted">
               <span className="inline-flex items-center gap-2">
-                <span className="h-2 w-2 bg-cyan-300" />
+                <span className="h-2.5 w-2.5 rounded-sm bg-accent" />
                 {t("Sent replies")}
               </span>
               <span className="inline-flex items-center gap-2">
-                <span className="h-2 w-2 bg-emerald-300" />
+                <span className="h-2.5 w-2.5 rounded-sm bg-success" />
                 {t("Link clicks")}
               </span>
             </div>
-          </section>
+          </Card>
 
           <aside className="space-y-6">
-            <section className="border border-white/10 bg-white/[0.035] p-4 sm:p-6">
-              <h2 className="text-xl font-black text-white">{t("Top Keywords")}</h2>
-              <div className="mt-5 space-y-3">
+            <Card title={t("Top Keywords")}>
+              <div className="mt-4 space-y-3">
                 {report.topKeywords.length === 0 && (
-                  <p className="text-sm text-zinc-400">
-                    {t("No matched keyword data yet.")}
-                  </p>
+                  <p className="text-sm text-muted">{t("No matched keyword data yet.")}</p>
                 )}
                 {report.topKeywords.map((keyword) => (
                   <div
                     key={keyword.keyword}
-                    className="flex items-center justify-between gap-4 border-b border-white/10 pb-3 last:border-0 last:pb-0"
+                    className="flex items-center justify-between gap-4 border-b border-border pb-3 last:border-0 last:pb-0"
                   >
-                    <span className="text-sm font-semibold text-white">
-                      {keyword.keyword}
-                    </span>
-                    <span className="text-sm text-zinc-400">
+                    <span className="text-sm font-medium text-foreground">{keyword.keyword}</span>
+                    <span className="rounded-md bg-surface-hover px-2 py-0.5 text-xs font-medium text-muted">
                       {keyword.count}
                     </span>
                   </div>
                 ))}
               </div>
-            </section>
+            </Card>
 
-            <section className="border border-white/10 bg-white/[0.035] p-4 sm:p-6">
-              <h2 className="text-xl font-black text-white">{t("Tracked Links")}</h2>
-              <div className="mt-5 space-y-3">
+            <Card title={t("Tracked Links")}>
+              <div className="mt-4 space-y-3">
                 {report.trackedLinks.length === 0 && (
-                  <p className="text-sm text-zinc-400">
-                    {t("This campaign does not have a tracked link.")}
-                  </p>
+                  <p className="text-sm text-muted">{t("This campaign does not have a tracked link.")}</p>
                 )}
                 {report.trackedLinks.map((link) => (
-                  <div
-                    key={link.slug}
-                    className="flex items-center justify-between gap-4"
-                  >
-                    <span className="min-w-0 truncate text-sm text-zinc-300">
-                      {link.destinationHost}
-                    </span>
-                    <span className="text-sm font-semibold text-white">
+                  <div key={link.slug} className="flex items-center justify-between gap-4">
+                    <span className="min-w-0 truncate text-sm text-muted">{link.destinationHost}</span>
+                    <span className="rounded-md bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
                       {link.clicks}
                     </span>
                   </div>
                 ))}
               </div>
-            </section>
+            </Card>
           </aside>
         </div>
 
-        <section className="mt-8 border border-white/10 bg-white/[0.035] p-4 sm:p-6">
-          <h2 className="text-xl font-black text-white">{t("Campaign Setup")}</h2>
-          <div className="mt-5 grid gap-5 md:grid-cols-3">
+        <Card title={t("Campaign Setup")}>
+          <div className="mt-5 grid gap-6 md:grid-cols-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                {t("Keywords")}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <p className="text-xs font-medium text-subtle">{t("Keywords")}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {report.campaign.keywords.map((keyword) => (
-                  <span
-                    key={keyword}
-                    className="border border-white/10 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-300"
-                  >
-                    {keyword}
-                  </span>
+                  <Chip key={keyword}>{keyword}</Chip>
                 ))}
               </div>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                {t("Created")}
-              </p>
-              <p className="mt-3 text-sm text-zinc-300">
-                {formatDate(report.campaign.createdAt, { locale, t })}
-              </p>
+              <p className="text-xs font-medium text-subtle">{t("Created")}</p>
+              <p className="mt-3 text-sm text-foreground">{formatDate(report.campaign.createdAt, { locale, t })}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                {t("Source post")}
-              </p>
+              <p className="text-xs font-medium text-subtle">{t("Source post")}</p>
               {report.campaign.postUrl ? (
                 <a
                   href={report.campaign.postUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-3 inline-flex text-sm font-semibold text-cyan-200 transition hover:text-cyan-100"
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent transition-colors hover:text-accent-hover"
                 >
                   {t("View Instagram post")}
+                  <IconExternalLink size={14} stroke={1.75} />
                 </a>
               ) : (
-                <p className="mt-3 text-sm text-zinc-400">{t("Not attached")}</p>
+                <p className="mt-3 text-sm text-muted">{t("Not attached")}</p>
               )}
             </div>
           </div>
-        </section>
+        </Card>
 
         {report.branded && (
-          <footer className="mt-8 border-t border-white/10 pt-6 text-center text-xs text-zinc-500">
+          <footer className="flex flex-col items-center gap-3 border-t border-border pt-8 text-center text-xs text-subtle">
+            <Link href="/" aria-label="OpenReply">
+              <Logo />
+            </Link>
             {t("Built with OpenReply, the Instagram comment-to-DM campaign OS.")}
           </footer>
         )}

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { getI18n } from "@/lib/i18n/server";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import InvitationAcceptCard from "@/components/invitation-accept-card";
+import AuthShell, { AuthCard } from "@/components/public/auth-shell";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 
@@ -38,37 +38,33 @@ export default async function InvitePage({ params }: InvitePageProps) {
   const expired = invitation.expiresAt <= new Date();
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center px-5 py-12">
-        <Link href="/" className="mb-8 text-sm font-bold text-cyan-100">
-          OpenReply
-        </Link>
-        <section className="border border-white/10 bg-white/[0.035] p-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-cyan-100">
-            {t("Workspace invitation")}
-          </p>
-          <h1 className="mt-4 text-3xl font-black leading-tight text-white">
-            {t("Join {workspace}", { workspace: invitation.workspace.name })}
-          </h1>
-          <p className="mt-4 text-sm leading-6 text-zinc-400">
-            {t("You were invited as {role} for {email}.", { role: label(invitation.role), email: invitation.email })}
-          </p>
-          <div className="mt-8">
-            {expired ? (
-              <p className="text-sm text-error">
-                {t("This invitation has expired. Ask the workspace owner to resend it.")}
-              </p>
-            ) : (
-              <InvitationAcceptCard
-                token={token}
-                isSignedIn={Boolean(session?.user?.id)}
-                invitedEmail={invitation.email}
-              />
-            )}
-          </div>
-        </section>
-      </div>
-    </main>
+    <AuthShell maxWidth="max-w-lg">
+      <AuthCard>
+        <p className="inline-flex items-center gap-2 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          {t("Workspace invitation")}
+        </p>
+        <h1 className="mt-4 font-heading text-2xl font-semibold leading-tight tracking-tight text-foreground">
+          {t("Join {workspace}", { workspace: invitation.workspace.name })}
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted">
+          {t("You were invited as {role} for {email}.", { role: label(invitation.role), email: invitation.email })}
+        </p>
+        <div className="mt-7">
+          {expired ? (
+            <p className="rounded-xl border border-error/20 bg-error-soft px-4 py-3 text-sm text-error">
+              {t("This invitation has expired. Ask the workspace owner to resend it.")}
+            </p>
+          ) : (
+            <InvitationAcceptCard
+              token={token}
+              isSignedIn={Boolean(session?.user?.id)}
+              invitedEmail={invitation.email}
+            />
+          )}
+        </div>
+      </AuthCard>
+    </AuthShell>
   );
 }
 

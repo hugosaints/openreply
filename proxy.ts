@@ -16,17 +16,14 @@ export function proxy(request: NextRequest) {
   const isProtected = PROTECTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
-  const isLogin = pathname === "/login";
-  const isAuthenticated = hasSessionCookie(request);
-
-  if (isProtected && !isAuthenticated) {
+  // /login is intentionally not redirected here: the cookie may be stale (the
+  // session row is gone after sign-out or expiry). The login page validates the
+  // session itself and only then forwards to the dashboard, which avoids a
+  // /login <-> /dashboard redirect loop.
+  if (isProtected && !hasSessionCookie(request)) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
-  }
-
-  if (isLogin && isAuthenticated) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();
@@ -38,6 +35,5 @@ export const config = {
     "/automations/:path*",
     "/logs/:path*",
     "/settings/:path*",
-    "/login",
   ],
 };

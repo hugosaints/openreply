@@ -58,12 +58,12 @@ const labels: Record<string, StaticMessageKey> = {
 
 export function createI18n(locale: Locale) {
   function t<K extends MessageKey>(key: K, ...args: MessageArgs<K>): string {
-    const message =
-      locale === "zh-TW"
+    const message: string =
+      (locale === "zh-TW"
         ? zhTW[key]
         : locale === "pt-BR"
           ? (ptBR as typeof zhTW)[key]
-          : key;
+          : key) ?? key;
     const values = args[0] as Record<string, string | number> | undefined;
     return message.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
       values?.[name] === undefined ? placeholder : String(values[name]),

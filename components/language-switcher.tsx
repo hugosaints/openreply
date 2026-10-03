@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { setLocale } from "@/lib/i18n/actions";
 import { useI18n } from "@/lib/i18n/provider";
 
-export default function LanguageSwitcher() {
+export default function LanguageSwitcher({ compact = false }: { compact?: boolean } = {}) {
   const { locale, t } = useI18n();
   const [pending, startTransition] = useTransition();
   const [failed, setFailed] = useState(false);
@@ -12,7 +12,7 @@ export default function LanguageSwitcher() {
   return (
     <div className="space-y-1">
       <label className="inline-flex items-center gap-2 text-sm text-muted">
-        <span>{t("Language")}</span>
+        <span className={compact ? "sr-only" : undefined}>{t("Language")}</span>
         <select
           value={locale}
           disabled={pending}

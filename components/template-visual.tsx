@@ -1,55 +1,43 @@
 import type { CampaignTemplate } from "@/lib/templates/campaign-templates";
+import { Chip } from "@/components/public/ui";
 
 interface TemplateVisualProps {
   template: CampaignTemplate;
   compact?: boolean;
 }
 
+/** Mini campaign card: trigger, keywords and the private-reply preview. */
 export default function TemplateVisual({
   template,
   compact = false,
 }: TemplateVisualProps) {
   return (
-    <div className="border border-border p-4">
-      <div className="border border-border bg-surface p-4">
-        <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Comment trigger
-            </p>
-            <p className="mt-1 text-sm font-bold text-white">
-              {template.triggerExample}
-            </p>
-          </div>
-          <span className="border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-zinc-300">
-            {template.category}
-          </span>
+    <div className="panel overflow-hidden rounded-2xl shadow-[0_18px_40px_-24px_rgb(29_38_48/0.22)]">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3.5">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-subtle">Comment trigger</p>
+          <p className="mt-1 truncate text-sm font-semibold text-foreground">{template.triggerExample}</p>
         </div>
+        <Chip tone="accent">{template.category}</Chip>
+      </div>
 
-        <div className={`grid gap-3 pt-4 ${compact ? "" : "sm:grid-cols-2"}`}>
-          <div className="border border-white/10 bg-white/[0.035] p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Keywords
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {template.keywords.map((keyword) => (
-                <span
-                  key={keyword}
-                  className="border border-white/10 bg-white/[0.05] px-2 py-1 text-xs font-bold text-white"
-                >
-                  {keyword}
-                </span>
-              ))}
-            </div>
+      <div className={`grid gap-3 p-4 ${compact ? "" : "sm:grid-cols-2"}`}>
+        <div className="rounded-xl bg-surface-hover/70 p-3">
+          <p className="text-xs font-medium text-subtle">Keywords</p>
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {template.keywords.map((keyword) => (
+              <span
+                key={keyword}
+                className="rounded-md bg-surface px-2 py-1 text-xs font-semibold text-foreground ring-1 ring-border"
+              >
+                {keyword}
+              </span>
+            ))}
           </div>
-          <div className="border border-white/10 bg-white/[0.035] p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Private reply
-            </p>
-            <p className="mt-3 text-sm leading-6 text-zinc-200">
-              {template.privateReplyPreview}
-            </p>
-          </div>
+        </div>
+        <div className="rounded-xl bg-accent-soft p-3">
+          <p className="text-xs font-medium text-accent">Private reply</p>
+          <p className="mt-2.5 text-sm leading-relaxed text-foreground/85">{template.privateReplyPreview}</p>
         </div>
       </div>
     </div>

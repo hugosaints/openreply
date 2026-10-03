@@ -1,5 +1,9 @@
 import Link from "next/link";
-import PublicSiteHeader from "@/components/public-site-header";
+import PublicFooter from "@/components/public/public-footer";
+import PublicHeader from "@/components/public/public-header";
+import { SectionHeading, heroGlow, primaryButton, secondaryButton } from "@/components/public/ui";
+import { createI18n } from "@/lib/i18n";
+import { IconArrowRight, IconCheck, IconChevronDown, IconX } from "@tabler/icons-react";
 
 export interface SeoPageSection {
   title: string;
@@ -27,157 +31,157 @@ export interface SeoPageConfig {
   faqs: SeoPageSection[];
 }
 
+// Search-landing pages are published in English and stay statically rendered.
+const { t } = createI18n("en");
+
 export default function SeoPageShell({ config }: { config: SeoPageConfig }) {
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <PublicSiteHeader />
+    <div className="min-h-screen bg-background text-foreground">
+      <PublicHeader t={t} />
 
-      <section className="border-b border-white/10 bg-zinc-950/70">
-        <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 py-20 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
-          <div>
-            <p className="text-sm font-bold uppercase text-cyan-200">
-              {config.eyebrow}
-            </p>
-            <h1 className="mt-4 text-5xl font-black leading-tight text-white sm:text-6xl">
-              {config.title}
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-400">
-              {config.description}
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link
-                href="/login"
-                className="inline-flex items-center justify-center bg-cyan-300 px-6 py-3 text-sm font-bold text-zinc-950 transition hover:bg-cyan-200"
-              >
-                {config.primaryCta}
-              </Link>
-              <Link
-                href="/templates"
-                className="inline-flex items-center justify-center border border-white/10 bg-white/[0.04] px-6 py-3 text-sm font-bold text-white transition hover:border-white/20 hover:bg-white/[0.08]"
-              >
-                {config.secondaryCta ?? "Browse templates"}
-              </Link>
-            </div>
-          </div>
-
-          <div className="border border-white/10 bg-white/[0.035] p-6">
-            <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-              Campaign OS checklist
-            </p>
-            <ul className="mt-5 space-y-4">
-              {config.bullets.map((bullet) => (
-                <li key={bullet} className="flex gap-3 text-sm leading-6 text-zinc-300">
-                  {bullet}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-6 lg:px-8">
-        <div className="grid gap-4 md:grid-cols-3">
-          {config.sections.map((section) => (
-            <article key={section.title} className="border border-white/10 bg-white/[0.035] p-6">
-              <h2 className="text-2xl font-black text-white">{section.title}</h2>
-              <p className="mt-4 text-sm leading-7 text-zinc-400">{section.body}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="border-y border-white/10 bg-white/[0.025] py-16">
-        <div className="mx-auto w-full max-w-7xl px-5 sm:px-6 lg:px-8">
-          <h2 className="text-4xl font-black text-white">{config.comparisonTitle}</h2>
-          <div className="mt-8 overflow-hidden border border-white/10">
-            <div className="grid grid-cols-[0.8fr_1fr_1fr] border-b border-white/10 bg-zinc-950 text-xs font-bold uppercase tracking-wide text-zinc-500">
-              <div className="p-4">Need</div>
-              <div className="p-4 text-cyan-100">OpenReply</div>
-              <div className="p-4">Generic automation</div>
-            </div>
-            {config.comparisons.map((item) => (
-              <div
-                key={item.label}
-                className="grid grid-cols-1 border-b border-white/10 last:border-0 md:grid-cols-[0.8fr_1fr_1fr]"
-              >
-                <div className="bg-zinc-950/50 p-4 text-sm font-semibold text-white">
-                  {item.label}
-                </div>
-                <div className="p-4 text-sm leading-6 text-zinc-300">
-                  {item.ours}
-                </div>
-                <div className="p-4 text-sm leading-6 text-zinc-500">
-                  {item.other}
-                </div>
+      <main>
+        <section className="relative isolate overflow-hidden border-b border-border">
+          <div aria-hidden="true" className={heroGlow} />
+          <div className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:py-24">
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-accent-muted/70 bg-accent-soft px-3 py-1 text-xs font-medium text-accent">
+                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                {config.eyebrow}
+              </span>
+              <h1 className="mt-6 font-heading text-4xl font-semibold leading-[1.08] tracking-tight text-foreground sm:text-5xl">
+                {config.title}
+              </h1>
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">{config.description}</p>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Link href="/login" className={primaryButton}>
+                  {config.primaryCta}
+                  <IconArrowRight size={16} stroke={2} />
+                </Link>
+                <Link href="/templates" className={secondaryButton}>
+                  {config.secondaryCta ?? "Browse templates"}
+                </Link>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
 
-      <section className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-16 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
-        <div>
-          <p className="text-sm font-bold uppercase text-emerald-200">
-            Start from a template
-          </p>
-          <h2 className="mt-3 text-4xl font-black text-white">
-            Launch a campaign faster than building a chatbot flow
-          </h2>
-          <p className="mt-5 text-sm leading-7 text-zinc-400">
-            Use a campaign template, connect the right Instagram account, pick
-            the post, and ship a measurable comment-to-DM loop.
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {config.templateLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="border border-white/10 bg-white/[0.035] p-5 text-sm font-semibold text-white transition hover:border-cyan-200/30 hover:bg-cyan-300/10"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="border-t border-white/10 bg-zinc-950/70 py-16">
-        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
-          <div>
-            <p className="text-sm font-bold uppercase text-cyan-200">FAQ</p>
-            <h2 className="mt-3 text-4xl font-black text-white">
-              Search questions, answered clearly
-            </h2>
+            <div className="panel rounded-2xl p-6 shadow-[0_24px_60px_-28px_rgb(29_38_48/0.25)]">
+              <p className="text-xs font-semibold uppercase tracking-wider text-subtle">Campaign OS checklist</p>
+              <ul className="mt-5 space-y-4">
+                {config.bullets.map((bullet) => (
+                  <li key={bullet} className="flex items-start gap-3 text-sm leading-relaxed text-foreground/85">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
+                      <IconCheck size={13} stroke={2.5} />
+                    </span>
+                    {bullet}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <div className="grid gap-3">
-            {config.faqs.map((faq) => (
-              <article key={faq.title} className="border border-white/10 bg-white/[0.035] p-5">
-                <h3 className="text-lg font-bold text-white">{faq.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-400">{faq.body}</p>
+        </section>
+
+        <section className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+          <div className="grid gap-5 md:grid-cols-3">
+            {config.sections.map((section, index) => (
+              <article key={section.title} className="panel relative rounded-2xl p-6 transition-colors hover:border-border-hover">
+                <span className="font-mono text-xs text-subtle">0{index + 1}</span>
+                <h2 className="mt-3 font-heading text-xl font-semibold tracking-tight text-foreground">{section.title}</h2>
+                <p className="mt-3 text-sm leading-relaxed text-muted">{section.body}</p>
               </article>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-6 lg:px-8">
-        <div className="border border-cyan-200/20 bg-cyan-300/10 p-8 text-center">
-          <h2 className="text-4xl font-black text-white">
-            Turn the next high-intent comment into a private reply
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-zinc-300">
-            OpenReply is built for Instagram professional accounts, official
-            Meta private replies, and campaign reporting teams can show clients.
-          </p>
-          <Link
-            href="/login"
-            className="mt-8 inline-flex items-center justify-center bg-cyan-300 px-6 py-3 text-sm font-bold text-zinc-950 transition hover:bg-cyan-200"
-          >
-            Start free
-          </Link>
-        </div>
-      </section>
-    </main>
+        <section className="border-y border-border bg-surface-hover/40 py-20">
+          <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
+            <SectionHeading center eyebrow="Compare" title={config.comparisonTitle} />
+            <div className="panel mt-10 overflow-hidden rounded-2xl">
+              <div className="hidden grid-cols-[0.8fr_1fr_1fr] border-b border-border bg-surface-hover/70 text-xs font-semibold uppercase tracking-wider text-subtle md:grid">
+                <div className="p-4">Need</div>
+                <div className="p-4 text-accent">OpenReply</div>
+                <div className="p-4">Generic automation</div>
+              </div>
+              {config.comparisons.map((item) => (
+                <div
+                  key={item.label}
+                  className="grid grid-cols-1 border-b border-border last:border-0 md:grid-cols-[0.8fr_1fr_1fr]"
+                >
+                  <div className="p-4 text-sm font-medium text-foreground md:bg-surface-hover/40">{item.label}</div>
+                  <div className="flex items-start gap-2.5 p-4 text-sm leading-relaxed text-foreground/85">
+                    <IconCheck size={16} stroke={2.25} className="mt-0.5 shrink-0 text-success" />
+                    {item.ours}
+                  </div>
+                  <div className="flex items-start gap-2.5 p-4 text-sm leading-relaxed text-muted">
+                    <IconX size={16} stroke={2} className="mt-0.5 shrink-0 text-subtle" />
+                    {item.other}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto grid w-full max-w-6xl items-start gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
+          <SectionHeading
+            eyebrow="Start from a template"
+            title="Launch a campaign faster than building a chatbot flow"
+            description="Use a campaign template, connect the right Instagram account, pick the post, and ship a measurable comment-to-DM loop."
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {config.templateLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="panel group flex items-center justify-between gap-3 rounded-xl p-4 text-sm font-medium text-foreground transition-colors hover:border-accent-muted hover:bg-accent-soft/50"
+              >
+                {link.label}
+                <IconArrowRight size={16} stroke={1.75} className="shrink-0 text-subtle transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="border-t border-border bg-surface-hover/40 py-20">
+          <div className="mx-auto w-full max-w-3xl px-5 sm:px-8">
+            <SectionHeading center eyebrow="FAQ" title="Search questions, answered clearly" />
+            <div className="panel mt-10 divide-y divide-border overflow-hidden rounded-2xl">
+              {config.faqs.map((faq) => (
+                <details key={faq.title} className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 text-left text-base font-medium text-foreground transition-colors hover:bg-surface-hover/60 [&::-webkit-details-marker]:hidden">
+                    {faq.title}
+                    <IconChevronDown size={18} stroke={1.75} className="shrink-0 text-muted transition-transform group-open:rotate-180" />
+                  </summary>
+                  <p className="px-6 pb-5 text-sm leading-relaxed text-muted">{faq.body}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8">
+          <div className="relative isolate overflow-hidden rounded-3xl bg-accent px-6 py-16 text-center text-white sm:px-12">
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 -z-10 bg-[radial-gradient(50%_80%_at_50%_0%,rgb(255_255_255/0.22),transparent),radial-gradient(40%_60%_at_100%_100%,rgb(255_255_255/0.12),transparent)]"
+            />
+            <h2 className="mx-auto max-w-xl font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
+              Turn the next high-intent comment into a private reply
+            </h2>
+            <p className="mx-auto mt-4 max-w-lg text-base text-white/80">
+              OpenReply is built for Instagram professional accounts, official Meta private replies, and campaign
+              reporting teams can show clients.
+            </p>
+            <Link
+              href="/login"
+              className="mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-medium text-accent transition-colors hover:bg-accent-soft"
+            >
+              Start free
+              <IconArrowRight size={16} stroke={2} />
+            </Link>
+          </div>
+        </section>
+      </main>
+
+      <PublicFooter t={t} />
+    </div>
   );
 }
-

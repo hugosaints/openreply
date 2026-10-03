@@ -1,5 +1,7 @@
 import { getI18n } from "@/lib/i18n/server";
 import Link from "next/link";
+import AuthShell, { AuthCard } from "@/components/public/auth-shell";
+import { IconMailCheck } from "@tabler/icons-react";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -12,26 +14,26 @@ export async function generateMetadata() {
 export default async function VerifyRequestPage() {
   const { t } = await getI18n();
   return (
-    <div className="min-h-screen flex items-center justify-center px-6">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold text-foreground">
-            OpenReply
+    <AuthShell>
+      <AuthCard>
+        <div className="text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+            <IconMailCheck size={24} stroke={1.75} />
+          </span>
+          <h1 className="mt-5 font-heading text-xl font-semibold tracking-tight text-foreground">
+            {t("Check your email")}
           </h1>
-        </div>
-
-        <div className="panel rounded p-8 text-center">
-          <h2 className="text-lg font-semibold mb-2">{t("Check your email")}</h2>
-          <p className="text-sm text-muted">
+          <p className="mt-2 text-sm leading-relaxed text-muted">
             {t("We sent you a secure sign-in link. Open it on this device to continue.")}
           </p>
-          <p className="mt-6 text-sm">
-            <Link href="/login" className="text-accent hover:underline">
-              {t("Back to sign in")}
-            </Link>
-          </p>
+          <Link
+            href="/login"
+            className="mt-6 inline-flex text-sm font-medium text-accent transition-colors hover:text-accent-hover hover:underline"
+          >
+            {t("Back to sign in")}
+          </Link>
         </div>
-      </div>
-    </div>
+      </AuthCard>
+    </AuthShell>
   );
 }
