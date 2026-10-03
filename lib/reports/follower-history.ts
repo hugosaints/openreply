@@ -194,6 +194,18 @@ export async function ensureFollowerHistory(
       instagramId: account.instagramId,
       currentFollowers: 0,
     });
+    // Zernio's daily follower series stays empty until its snapshotter has run
+    // for the account, but the current count is always on the account itself.
+    // Recording it makes the KPI work on day one and the chart fills in daily.
+    try {
+      const info = await getUserInfo({ context: accessToken });
+      if (typeof info.followers_count === "number") {
+        await recordFollowerSnapshot(account.id, info.followers_count);
+        return info.followers_count;
+      }
+    } catch {
+      // Fall through to whatever history was stored.
+    }
     const history = await getFollowerHistory(account.id);
     return history.at(-1)?.followers ?? null;
   }

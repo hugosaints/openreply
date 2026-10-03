@@ -14,6 +14,10 @@ import {
   getFollowerHistory,
   type FollowerHistoryPoint,
 } from "@/lib/reports/follower-history";
+import {
+  getZernioPostAnalytics,
+  type ZernioPostAnalytics,
+} from "@/lib/zernio/analytics";
 
 // Allow time for paginated media + per-post insight calls on larger accounts.
 export const maxDuration = 60;
@@ -48,6 +52,32 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+/**
+ * Extra per-post figures only Zernio reports. Every field is nullable: absent
+ * means the platform did not report it for this media type, not zero.
+ */
+export interface OverviewPostDetails {
+  impressions: number | null;
+  engagementRate: number | null;
+  clicks: number | null;
+  follows: number | null;
+  reposts: number | null;
+  profileViews: number | null;
+  /** Reels only: average watch time per play, in milliseconds. */
+  reelsAvgWatchMs: number | null;
+  /** Reels only: total watch time including replays, in milliseconds. */
+  reelsTotalWatchMs: number | null;
+  /** Reels only: % of views that skipped within the first 3 seconds. */
+  reelsSkipRate: number | null;
+  videoDurationSeconds: number | null;
+  isAiGenerated: boolean | null;
+  isSharedToFeed: boolean | null;
+  /** MUSIC or ORIGINAL_SOUND. */
+  mediaAudioType: string | null;
+  /** When Zernio last synced this post's analytics. */
+  lastUpdated: string | null;
+}
+
 export interface OverviewPost {
   id: string;
   caption: string | null;
@@ -61,6 +91,7 @@ export interface OverviewPost {
   comments: number;
   saved: number | null;
   shares: number | null;
+  details?: OverviewPostDetails;
 }
 
 export interface OverviewResponse {
@@ -93,6 +124,44 @@ export interface OverviewResponse {
 
 function isVideoLike(media: InstagramMedia): boolean {
   return media.media_product_type === "REELS" || media.media_type === "VIDEO";
+}
+
+/**
+ * Zernio reports FEED for every non-reel feed post, so the carousel/video/image
+ * distinction has to come from its media type.
+ */
+function zernioFormat(rich: ZernioPostAnalytics): string | null {
+  const product = rich.mediaProductType?.toUpperCase();
+  if (product === "REELS" || product === "STORY") return product;
+  switch (rich.mediaType) {
+    case "carousel":
+      return "CAROUSEL_ALBUM";
+    case "video":
+      return "VIDEO";
+    case "image":
+      return "IMAGE";
+    default:
+      return null;
+  }
+}
+
+function postDetails(rich: ZernioPostAnalytics): OverviewPostDetails {
+  return {
+    impressions: rich.impressions,
+    engagementRate: rich.engagementRate,
+    clicks: rich.clicks,
+    follows: rich.follows,
+    reposts: rich.reposts,
+    profileViews: rich.profileViews,
+    reelsAvgWatchMs: rich.reelsAvgWatchMs,
+    reelsTotalWatchMs: rich.reelsTotalWatchMs,
+    reelsSkipRate: rich.reelsSkipRate,
+    videoDurationSeconds: rich.videoDurationSeconds,
+    isAiGenerated: rich.isAiGenerated,
+    isSharedToFeed: rich.isSharedToFeed,
+    mediaAudioType: rich.mediaAudioType,
+    lastUpdated: rich.lastUpdated,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -142,6 +211,21 @@ export async function GET(request: NextRequest) {
       media.length >= MAX_POSTS ||
       (account.provider === "ZERNIO" && media.length >= 25);
 
+    // Zernio returns every synced post's full analytics block in one paginated
+    // call. null means the list could not be read, so the per-post path below
+    // is used instead.
+    let zernioPosts: Map<string, ZernioPostAnalytics> | null = null;
+    if (accessToken.provider === "ZERNIO") {
+      try {
+        zernioPosts = await getZernioPostAnalytics(accessToken, target);
+      } catch (err) {
+        console.warn(
+          "[Instagram Overview] Zernio post analytics list unavailable:",
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
     // Likes and comments come free with basic media fields. Views / reach /
     // saved / shares require the insights permission, so fetch them per media
     // (bounded concurrency) and degrade gracefully if the token was granted
@@ -153,6 +237,19 @@ export async function GET(request: NextRequest) {
       media,
       INSIGHTS_CONCURRENCY,
       async (m) => {
+        if (zernioPosts) {
+          const rich = zernioPosts.get(m.id);
+          if (!rich?.synced) return null;
+          insightsAvailable = true;
+          return {
+            views: rich.views ?? undefined,
+            reach: rich.reach ?? undefined,
+            saved: rich.saves ?? undefined,
+            shares: rich.shares ?? undefined,
+            likes: rich.likes ?? undefined,
+            comments: rich.comments ?? undefined,
+          };
+        }
         const metrics = isVideoLike(m)
           ? ["views", "reach", "saved", "shares", "total_interactions"]
           : ["reach", "saved", "shares", "total_interactions"];
@@ -173,14 +270,18 @@ export async function GET(request: NextRequest) {
 
     const posts: OverviewPost[] = media.map((m, i) => {
       const ins = insights[i];
-      const likes = m.like_count ?? 0;
-      const comments = m.comments_count ?? 0;
+      const rich = zernioPosts?.get(m.id);
+      // Zernio's analytics are fresher than the live post list's counters.
+      const likes = ins?.likes ?? m.like_count ?? 0;
+      const comments = ins?.comments ?? m.comments_count ?? 0;
       return {
         id: m.id,
         caption: m.caption?.trim().slice(0, 120) ?? null,
         permalink: m.permalink ?? null,
-        thumbnailUrl: m.thumbnail_url ?? m.media_url ?? null,
-        mediaType: m.media_product_type ?? m.media_type,
+        // Zernio re-hosts covers, so they outlive Instagram's expiring CDN links.
+        thumbnailUrl: rich?.thumbnailUrl ?? m.thumbnail_url ?? m.media_url ?? null,
+        mediaType:
+          (rich && zernioFormat(rich)) ?? m.media_product_type ?? m.media_type,
         timestamp: m.timestamp,
         views: ins?.views ?? null,
         reach: ins?.reach ?? null,
@@ -188,6 +289,7 @@ export async function GET(request: NextRequest) {
         comments,
         saved: ins?.saved ?? null,
         shares: ins?.shares ?? null,
+        ...(rich?.synced ? { details: postDetails(rich) } : {}),
       };
     });
 

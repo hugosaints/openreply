@@ -124,3 +124,48 @@ export function followerChange(history: FollowerPoint[]) {
   const pct = first > 0 ? Number(((net / first) * 100).toFixed(1)) : null;
   return { net, pct, days: history.length };
 }
+
+/** Percent change versus a previous value; null when there is no baseline. */
+export function percentChange(current: number, previous: number | null | undefined): number | null {
+  if (previous === null || previous === undefined || previous <= 0) return null;
+  return Number((((current - previous) / previous) * 100).toFixed(1));
+}
+
+export interface BestTimeInput {
+  /** 0 = Monday … 6 = Sunday, hour 0-23 in UTC. */
+  dayOfWeek: number;
+  hour: number;
+  avgEngagement: number;
+  postCount: number;
+}
+
+/**
+ * Zernio buckets best posting times by UTC weekday/hour. Shift them into the
+ * viewer's timezone (default: the runtime's current offset) so "Thursday 12:00"
+ * means what the account owner expects. Output keeps 0 = Monday.
+ */
+export function localizeBestTimes(
+  slots: BestTimeInput[],
+  offsetMinutes = -new Date().getTimezoneOffset()
+): BestTimeInput[] {
+  const week = 7 * 24 * 60;
+  return slots.map((slot) => {
+    const shifted = (((slot.dayOfWeek * 24 + slot.hour) * 60 + offsetMinutes) % week + week) % week;
+    return {
+      ...slot,
+      dayOfWeek: Math.floor(shifted / (24 * 60)),
+      hour: Math.floor((shifted % (24 * 60)) / 60),
+    };
+  });
+}
+
+/** Share of `value` in the sum of `entries`, as a 0-100 number with one decimal. */
+export function shareOfTotal(entries: { value: number }[], value: number): number {
+  const total = entries.reduce((sum, e) => sum + e.value, 0);
+  return total > 0 ? Number(((value / total) * 100).toFixed(1)) : 0;
+}
+
+/** Instagram suffixes regions with "(state)" — drop it, the comma already scopes the city. */
+export function tidyCityName(name: string): string {
+  return name.replace(/\s*\(state\)/gi, "");
+}

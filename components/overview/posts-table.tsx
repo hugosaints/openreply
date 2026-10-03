@@ -1,12 +1,14 @@
 "use client";
 
 import type { OverviewPost } from "@/app/api/instagram/overview/route";
+import { formatDateTime, formatDuration, formatNumber as formatCount, formatPercent } from "@/components/overview/format";
 import type { Locale } from "@/lib/i18n";
 import { useI18n } from "@/lib/i18n/provider";
 import { contentFormat, postInteractions } from "@/lib/reports/overview-insights";
 import {
   IconArrowDown,
   IconArrowUp,
+  IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
   IconExternalLink,
@@ -14,9 +16,18 @@ import {
   IconSearch,
   IconSelector,
 } from "@tabler/icons-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
-type SortKey = "timestamp" | "views" | "reach" | "likes" | "comments" | "saved" | "shares" | "interactions";
+type SortKey =
+  | "timestamp"
+  | "views"
+  | "reach"
+  | "likes"
+  | "comments"
+  | "saved"
+  | "shares"
+  | "interactions"
+  | "engagementRate";
 
 const PAGE_SIZE = 10;
 
@@ -41,8 +52,60 @@ function formatNumber(n: number | null, locale: Locale): string {
 function sortValue(p: OverviewPost, key: SortKey): number | string {
   if (key === "timestamp") return p.timestamp;
   if (key === "interactions") return postInteractions(p);
+  if (key === "engagementRate") return p.details?.engagementRate ?? -1;
   // Missing insights sort below every real value.
   return p[key] ?? -1;
+}
+
+function DetailStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="truncate text-xs text-muted">{label}</dt>
+      <dd className="mt-0.5 truncate text-sm font-medium tabular-nums text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+/** Everything Zernio reports for one post beyond the table columns. */
+function PostDetails({ post }: { post: OverviewPost }) {
+  const { t, locale } = useI18n();
+  const d = post.details;
+  if (!d) return null;
+
+  const stats: { label: string; value: string }[] = [];
+  const add = (label: string, value: string | null) => {
+    if (value !== null) stats.push({ label, value });
+  };
+  const count = (n: number | null) => (n === null ? null : formatCount(n, locale));
+
+  add(t("Impressions"), count(d.impressions));
+  add(t("Engagement rate"), d.engagementRate === null ? null : formatPercent(d.engagementRate, locale, 2));
+  add(t("Link clicks"), count(d.clicks));
+  add(t("New followers"), count(d.follows));
+  add(t("Reposts"), count(d.reposts));
+  add(t("Profile views"), count(d.profileViews));
+  add(t("Video length"), d.videoDurationSeconds === null ? null : formatDuration(d.videoDurationSeconds * 1000, locale));
+  add(t("Avg. watch time"), d.reelsAvgWatchMs === null || d.reelsAvgWatchMs === 0 ? null : formatDuration(d.reelsAvgWatchMs, locale));
+  add(
+    t("Avg. watched"),
+    d.reelsAvgWatchMs && d.videoDurationSeconds
+      ? formatPercent(Math.min((d.reelsAvgWatchMs / 1000 / d.videoDurationSeconds) * 100, 100), locale, 0)
+      : null
+  );
+  add(t("Total watch time"), d.reelsTotalWatchMs === null || d.reelsTotalWatchMs === 0 ? null : formatDuration(d.reelsTotalWatchMs, locale));
+  add(t("Skip rate"), d.reelsSkipRate === null ? null : formatPercent(d.reelsSkipRate, locale));
+  add(t("Audio"), d.mediaAudioType === null ? null : d.mediaAudioType === "MUSIC" ? t("Music") : t("Original sound"));
+  add(t("Shared to feed"), d.isSharedToFeed === null ? null : d.isSharedToFeed ? t("Yes") : t("No"));
+  add(t("AI-generated"), d.isAiGenerated === null ? null : d.isAiGenerated ? t("Yes") : t("No"));
+  add(t("Last synced"), d.lastUpdated === null ? null : formatDateTime(d.lastUpdated, locale));
+
+  return (
+    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+      {stats.map((s) => (
+        <DetailStat key={s.label} label={s.label} value={s.value} />
+      ))}
+    </dl>
+  );
 }
 
 function Thumb({ src }: { src: string | null }) {
@@ -72,6 +135,8 @@ export default function PostsTable({ posts, loading = false }: { posts: Overview
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "timestamp", dir: "desc" });
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const hasDetails = posts.some((p) => p.details);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -171,60 +236,99 @@ export default function PostsTable({ posts, loading = false }: { posts: Overview
           {/* Eight metric columns can't compress into a phone; let the table keep
               its natural width and scroll inside the panel instead. */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className={`w-full text-sm ${hasDetails ? "min-w-[960px]" : "min-w-[860px]"}`}>
               <thead>
                 <tr className="border-y border-border bg-surface-hover/60 text-xs text-muted">
                   <th scope="col" className="px-5 py-2.5 text-left font-medium">{t("Post")}</th>
                   {columns.map((c) => renderSortHeader(c.key, c.label))}
+                  {hasDetails && renderSortHeader("engagementRate", t("Eng. rate"))}
                   {renderSortHeader("timestamp", t("Date"))}
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((p) => {
                   const caption = p.caption || t("{type} post", { type: formatLabel(contentFormat(p.mediaType)) });
+                  const open = openId === p.id && Boolean(p.details);
+                  const colSpan = columns.length + (hasDetails ? 3 : 2);
                   return (
-                    <tr key={p.id} className="border-b border-border transition-colors last:border-0 hover:bg-surface-hover/50">
-                      <td className="max-w-[320px] px-5 py-2.5">
-                        <div className="flex items-center gap-3">
-                          <Thumb src={p.thumbnailUrl} />
-                          <div className="min-w-0">
-                            {p.permalink ? (
-                              <a
-                                href={p.permalink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="group flex items-center gap-1 text-foreground hover:text-accent"
-                                title={caption}
+                    <Fragment key={p.id}>
+                      <tr className="border-b border-border transition-colors last:border-0 hover:bg-surface-hover/50">
+                        <td className="max-w-[320px] px-5 py-2.5">
+                          <div className="flex items-center gap-3">
+                            {hasDetails && (
+                              <button
+                                type="button"
+                                id={`post-toggle-${p.id}`}
+                                onClick={() => setOpenId(open ? null : p.id)}
+                                disabled={!p.details}
+                                aria-expanded={open}
+                                aria-label={open ? t("Hide details") : t("Show details")}
+                                title={open ? t("Hide details") : t("Show details")}
+                                className="icon-btn -ml-2 shrink-0 disabled:cursor-default disabled:opacity-25"
                               >
-                                <span className="truncate">{caption}</span>
-                                <IconExternalLink size={13} stroke={1.75} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
-                              </a>
-                            ) : (
-                              <span className="block truncate text-foreground" title={caption}>{caption}</span>
+                                <IconChevronDown
+                                  size={16}
+                                  stroke={1.75}
+                                  className={`transition-transform ${open ? "rotate-180" : ""}`}
+                                />
+                              </button>
                             )}
-                            <span className="mt-0.5 inline-flex rounded-full bg-accent-soft px-2 py-px text-[11px] font-medium text-accent">
-                              {formatLabel(contentFormat(p.mediaType))}
-                            </span>
+                            <Thumb src={p.thumbnailUrl} />
+                            <div className="min-w-0">
+                              {p.permalink ? (
+                                <a
+                                  href={p.permalink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group flex items-center gap-1 text-foreground hover:text-accent"
+                                  title={caption}
+                                >
+                                  <span className="truncate">{caption}</span>
+                                  <IconExternalLink size={13} stroke={1.75} className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                                </a>
+                              ) : (
+                                <span className="block truncate text-foreground" title={caption}>{caption}</span>
+                              )}
+                              <span className="mt-0.5 inline-flex rounded-full bg-accent-soft px-2 py-px text-[11px] font-medium text-accent">
+                                {formatLabel(contentFormat(p.mediaType))}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      {columns.map((c) => {
-                        const value = p[c.key as keyof OverviewPost] as number | null;
-                        return (
+                        </td>
+                        {columns.map((c) => {
+                          const value = p[c.key as keyof OverviewPost] as number | null;
+                          return (
+                            <td
+                              key={c.key}
+                              className={`px-3 py-2.5 text-right tabular-nums ${value === null ? "text-subtle" : "text-foreground"}`}
+                            >
+                              {formatNumber(value, locale)}
+                            </td>
+                          );
+                        })}
+                        {hasDetails && (
                           <td
-                            key={c.key}
-                            className={`px-3 py-2.5 text-right tabular-nums ${value === null ? "text-subtle" : "text-foreground"}`}
+                            className={`px-3 py-2.5 text-right tabular-nums ${
+                              p.details?.engagementRate == null ? "text-subtle" : "text-foreground"
+                            }`}
                           >
-                            {formatNumber(value, locale)}
+                            {p.details?.engagementRate == null ? "—" : formatPercent(p.details.engagementRate, locale, 2)}
                           </td>
-                        );
-                      })}
-                      <td className="whitespace-nowrap px-3 py-2.5 pr-5 text-right text-xs text-muted">
-                        <time dateTime={p.timestamp}>
-                          {new Date(p.timestamp).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" })}
-                        </time>
-                      </td>
-                    </tr>
+                        )}
+                        <td className="whitespace-nowrap px-3 py-2.5 pr-5 text-right text-xs text-muted">
+                          <time dateTime={p.timestamp}>
+                            {new Date(p.timestamp).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" })}
+                          </time>
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr className="border-b border-border bg-surface-hover/40 last:border-0">
+                          <td colSpan={colSpan} className="px-5 py-4">
+                            <PostDetails post={p} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
