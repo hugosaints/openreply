@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo/site";
 import LegalShell from "@/components/legal-shell";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Terms of Service - OpenReply",
   description:
     "Terms for using OpenReply's Instagram comment-to-DM campaign software.",
-};
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

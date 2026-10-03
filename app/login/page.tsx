@@ -6,17 +6,21 @@ import { DemoNotice } from "@/components/demo-notice";
 import AuthShell, { AuthCard } from "@/components/public/auth-shell";
 import { primaryButton } from "@/components/public/ui";
 import { isPublicDemoHost } from "@/lib/env";
+import { buildPageMetadata } from "@/lib/seo/site";
 import { IconMailCheck, IconTemplate } from "@tabler/icons-react";
 
 const GITHUB_URL = "https://github.com/diwenne/openreply";
 const SETUP_DOCS_URL = `${GITHUB_URL}/blob/main/docs/setup.md`;
 
 export async function generateMetadata() {
-  const { t } = await getI18n();
-  return {
+  const { t, locale } = await getI18n();
+  return buildPageMetadata({
     title: t("Login - OpenReply"),
     description: t("Sign in to manage Instagram comment-to-DM campaigns."),
-  };
+    path: "/login",
+    locale,
+    noindex: true,
+  });
 }
 
 export default async function LoginPage({

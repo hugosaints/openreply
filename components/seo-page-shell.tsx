@@ -2,6 +2,7 @@ import Link from "next/link";
 import PublicFooter from "@/components/public/public-footer";
 import PublicHeader from "@/components/public/public-header";
 import { SectionHeading, heroGlow, primaryButton, secondaryButton } from "@/components/public/ui";
+import JsonLd from "@/components/seo/json-ld";
 import { createI18n } from "@/lib/i18n";
 import { IconArrowRight, IconCheck, IconChevronDown, IconX } from "@tabler/icons-react";
 
@@ -37,6 +38,17 @@ const { t } = createI18n("en");
 export default function SeoPageShell({ config }: { config: SeoPageConfig }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: config.faqs.map((faq) => ({
+            "@type": "Question",
+            name: faq.title,
+            acceptedAnswer: { "@type": "Answer", text: faq.body },
+          })),
+        }}
+      />
       <PublicHeader t={t} />
 
       <main>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo/site";
 import Link from "next/link";
 import PublicFooter from "@/components/public/public-footer";
 import PublicHeader from "@/components/public/public-header";
@@ -8,17 +9,13 @@ import { createI18n } from "@/lib/i18n";
 import { CAMPAIGN_TEMPLATES } from "@/lib/templates/campaign-templates";
 import { IconArrowRight } from "@tabler/icons-react";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Instagram Comment to DM Templates - OpenReply",
   description:
     "Copy ready-to-launch Instagram comment-to-DM campaign templates for product links, lead magnets, real estate, fitness, restaurants, events, and creators.",
-  keywords: [
-    "Instagram comment to DM templates",
-    "comment to DM campaigns",
-    "Instagram DM automation templates",
-    "Manychat alternative templates",
-  ],
-};
+  path: "/templates",
+  keywords: ["Instagram comment to DM templates","comment to DM campaigns","Instagram DM automation templates","Manychat alternative templates"],
+});
 
 // The template library is English-only search content and stays static.
 const { t } = createI18n("en");

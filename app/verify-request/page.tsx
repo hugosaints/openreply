@@ -2,13 +2,17 @@ import { getI18n } from "@/lib/i18n/server";
 import Link from "next/link";
 import AuthShell, { AuthCard } from "@/components/public/auth-shell";
 import { IconMailCheck } from "@tabler/icons-react";
+import { buildPageMetadata } from "@/lib/seo/site";
 
 export async function generateMetadata() {
-  const { t } = await getI18n();
-  return {
+  const { t, locale } = await getI18n();
+  return buildPageMetadata({
     title: t("Check your email - OpenReply"),
     description: t("A sign-in link was sent to your email."),
-  };
+    path: "/verify-request",
+    locale,
+    noindex: true,
+  });
 }
 
 export default async function VerifyRequestPage() {

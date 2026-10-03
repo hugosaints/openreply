@@ -5,6 +5,8 @@ import PublicFooter from "@/components/public/public-footer";
 import PublicHeader from "@/components/public/public-header";
 import { Chip, heroGlow, primaryButton, secondaryButton } from "@/components/public/ui";
 import TemplateVisual from "@/components/template-visual";
+import JsonLd from "@/components/seo/json-ld";
+import { absoluteUrl, buildPageMetadata } from "@/lib/seo/site";
 import { createI18n } from "@/lib/i18n";
 import { IconArrowLeft, IconArrowRight, IconCheck } from "@tabler/icons-react";
 import {
@@ -36,9 +38,11 @@ export async function generateMetadata({
     };
   }
 
-  return {
-    title: `${template.title} - Instagram Comment to DM Template`,
+  return buildPageMetadata({
+    title: `${template.title} - Instagram Comment-to-DM Template`,
     description: template.summary,
+    path: `/templates/${template.slug}`,
+    image: false,
     keywords: [
       `${template.title} template`,
       "Instagram comment to DM template",
@@ -46,7 +50,7 @@ export async function generateMetadata({
       template.category,
       template.audience,
     ],
-  };
+  });
 }
 
 export default async function TemplateDetailPage({ params }: TemplatePageProps) {
@@ -63,6 +67,17 @@ export default async function TemplateDetailPage({ params }: TemplatePageProps) 
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "OpenReply", item: absoluteUrl("/") },
+            { "@type": "ListItem", position: 2, name: "Templates", item: absoluteUrl("/templates") },
+            { "@type": "ListItem", position: 3, name: template.title, item: absoluteUrl(`/templates/${template.slug}`) },
+          ],
+        }}
+      />
       <PublicHeader t={t} active="templates" />
 
       <main>

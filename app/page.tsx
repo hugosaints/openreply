@@ -9,6 +9,8 @@ import { type StaticMessageKey } from "@/lib/i18n";
 import { I18nProvider } from "@/lib/i18n/provider";
 import { getI18n } from "@/lib/i18n/server";
 import { GITHUB_URL, SETUP_DOCS_URL, ZERNIO_DOCS_URL } from "@/lib/public-links";
+import JsonLd from "@/components/seo/json-ld";
+import { SITE_NAME, absoluteUrl, buildPageMetadata } from "@/lib/seo/site";
 import { zernioLink } from "@/lib/zernio-links";
 import {
   IconArrowRight,
@@ -35,13 +37,16 @@ import {
 type Key = StaticMessageKey;
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { t } = await getI18n();
-  return {
+  const { t, locale } = await getI18n();
+  return buildPageMetadata({
     title: t("OpenReply - Open source Instagram comment-to-DM automation"),
     description: t(
       "A free, self-hosted ManyChat alternative. Turn Instagram keyword comments into automatic private replies. Connect through your own Meta app or optional paid provider Zernio.",
     ),
-  };
+    path: "/",
+    image: false,
+    locale,
+  });
 }
 
 const steps: { icon: Icon; title: Key; description: Key }[] = [
@@ -172,6 +177,42 @@ export default async function Home() {
 
   return (
     <I18nProvider locale={locale}>
+      <JsonLd
+        data={[
+          {
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: SITE_NAME,
+            url: absoluteUrl("/"),
+            applicationCategory: "BusinessApplication",
+            operatingSystem: "Web",
+            inLanguage: locale,
+            description: t(
+              "A free, self-hosted ManyChat alternative. Turn Instagram keyword comments into automatic private replies. Connect through your own Meta app or optional paid provider Zernio.",
+            ),
+            license: "https://opensource.org/licenses/MIT",
+            isAccessibleForFree: true,
+            offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+            codeRepository: GITHUB_URL,
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: SITE_NAME,
+            url: absoluteUrl("/"),
+            inLanguage: locale,
+          },
+          {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: faqs.map((faq) => ({
+              "@type": "Question",
+              name: faq.question,
+              acceptedAnswer: { "@type": "Answer", text: faq.answer },
+            })),
+          },
+        ]}
+      />
       <div id="top" className="min-h-screen bg-background text-foreground">
         <a
           href="#main"

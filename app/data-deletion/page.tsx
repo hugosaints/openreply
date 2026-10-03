@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo/site";
 import LegalShell from "@/components/legal-shell";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Data Deletion - OpenReply",
   description:
     "How OpenReply customers can disconnect Instagram and request account or campaign data deletion.",
-};
+  path: "/data-deletion",
+});
 
 export default function DataDeletionPage() {
   return (

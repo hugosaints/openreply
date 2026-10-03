@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo/site";
 import LegalShell from "@/components/legal-shell";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Privacy Policy - OpenReply",
   description:
     "How OpenReply handles Instagram account data, webhook payloads, billing data, and customer campaign information.",
-};
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (

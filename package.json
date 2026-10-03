@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate deploy",
     "worker": "tsx worker/dm-worker.ts",
     "typecheck": "tsc --noEmit",
+    "generate:brand": "node scripts/generate-brand-assets.mjs",
     "test": "vitest run"
   },
   "dependencies": {

@@ -7,8 +7,10 @@ import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getWorkspaceMembership } from "@/lib/workspace";
 
 export async function generateMetadata() {
-  const { t } = await getI18n();
-  return { title: t("OpenReply - Open source Instagram comment-to-DM automation") };
+  return {
+    title: "OpenReply",
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function DashboardLayout({

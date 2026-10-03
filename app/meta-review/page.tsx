@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo/site";
 import LegalShell from "@/components/legal-shell";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Meta App Review Support - OpenReply",
   description:
     "Meta App Review notes for OpenReply's official Instagram private reply workflow.",
-};
+  path: "/meta-review",
+});
 
 export default function MetaReviewPage() {
   return (
