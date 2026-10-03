@@ -1,6 +1,7 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n/provider";
+import Segmented from "@/components/ui/segmented";
 
 
 /* eslint-disable @next/next/no-img-element */
@@ -562,22 +563,12 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
         )}
       </Phone>
 
-      <div className="inline-flex rounded-full bg-surface p-1">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => onTabChange(t.key)}
-            className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-              activeTab === t.key
-                ? "bg-background font-medium text-foreground ring-1 ring-accent/40"
-                : "text-muted hover:text-foreground"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Segmented<PreviewTab>
+        ariaLabel={t("Preview screen")}
+        options={tabs.map((item) => ({ value: item.key, label: item.label }))}
+        value={activeTab}
+        onChange={onTabChange}
+      />
     </div>
   );
 }

@@ -23,6 +23,10 @@ const STATIC_MESSAGES: readonly StaticMessageKey[] = [
   "Failed to send message",
   "Invalid request body",
   "A recipient and message are required.",
+  // /api/automations validation
+  "Choose which post(s) trigger the campaign",
+  "Add at least one keyword, or match any word",
+  "Opening DM needs a message and a button label",
   // OperationalEvent.message
   "Follow gate rejected a button tap",
   "Follower snapshot failed",
