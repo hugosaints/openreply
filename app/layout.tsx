@@ -1,6 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { Archivo, Figtree } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
+
+const figtree = Figtree({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-figtree",
+  display: "swap",
+});
+
+const archivo = Archivo({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-archivo",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "OpenReply - Open source Instagram comment-to-DM automation",
@@ -43,7 +56,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full dark">
+    <html lang="en" className={`h-full ${figtree.variable} ${archivo.variable}`}>
       <body
         className="min-h-full bg-background text-foreground font-sans antialiased"
         // Clears the home indicator when installed; 0 everywhere else.

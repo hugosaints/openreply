@@ -1,22 +1,30 @@
 @import "tailwindcss";
 
-/* ManyChat Alternative — Design System
-   Plain and functional. No gradients, glass, glow, or animation. */
+/* OpenReply — Design System
+   Clean admin theme: white surfaces, hairline borders, indigo primary.
+   Token names are stable; only values change between themes. */
 
 @theme inline {
   --color-background: #ffffff;
-  --color-foreground: #18181b;
-  --color-surface: #f7f7f8;
-  --color-surface-hover: #efeff1;
-  --color-border: #e4e4e7;
-  --color-border-hover: #d4d4d8;
-  --color-muted: #71717a;
-  --color-accent: #f97316;
-  --color-accent-hover: #ea580c;
-  --color-success: #16a34a;
+  --color-foreground: #1d2630;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f5f6fa;
+  --color-border: #eceef3;
+  --color-border-hover: #dbe0e5;
+  --color-muted: #5b6b79;
+  --color-subtle: #8996a4;
+  --color-accent: #4f46e5;
+  --color-accent-hover: #4338ca;
+  --color-accent-soft: #eef0fe;
+  --color-accent-muted: #c7c9f9;
+  --color-success: #2ca87f;
+  --color-success-soft: #e3f6ef;
   --color-error: #dc2626;
+  --color-error-soft: #fdecec;
   --color-warning: #d97706;
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-warning-soft: #fdf3e3;
+  --font-sans: var(--font-figtree), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: var(--font-archivo), var(--font-figtree), system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
 }
 
@@ -55,18 +63,114 @@ select:focus-visible {
   }
 }
 
-/* Panel — flat container. Replaces .glass / .glass-strong. */
+/* Panel — white card container. Hairline border, no shadow. */
 .panel {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
 }
 
-/* Kept as no-op aliases so existing markup degrades to plain surfaces
-   instead of breaking. Prefer .panel in new code. */
+/* Component classes below sit in the components layer so Tailwind utilities
+   (hidden, lg:hidden, flex, w-full…) can override them. `.panel` above stays
+   unlayered on purpose: older pages pair it with `rounded`/`rounded-2xl` and
+   rely on the panel radius winning. */
+@layer components {
+
+/* Split panel — one card whose cells are separated by hairline dividers
+   (KPI strip, ranking columns). Cells get the border, not the grid gap. */
+.panel-split {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  display: grid;
+}
+.panel-split > * {
+  border-color: var(--color-border);
+}
+
+/* Segmented control (tabs). */
+.segmented {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.segmented-item {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  color: var(--color-foreground);
+  white-space: nowrap;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.segmented-item + .segmented-item {
+  border-left: 1px solid var(--color-border);
+}
+.segmented-item:hover {
+  background: var(--color-surface-hover);
+}
+.segmented-item[aria-selected="true"] {
+  background: var(--color-accent-soft);
+  color: var(--color-foreground);
+  font-weight: 500;
+}
+
+/* Square icon button (top bar). */
+.icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
+  width: 2.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+.icon-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-foreground);
+}
+
+/* Popover / dropdown surface. */
+.popover {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 32px -8px rgb(29 38 48 / 0.16), 0 2px 6px rgb(29 38 48 / 0.06);
+}
+
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-pop-in {
+  animation: pop-in 140ms ease-out;
+}
+
+} /* end @layer components */
+
+/* Kept as no-op aliases so existing markup gets the card look. */
 .glass,
 .glass-strong {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
 }
 
 .gradient-mesh {

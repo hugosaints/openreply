@@ -3,63 +3,71 @@
 /**
  * Dashboard Home Page
  *
- * Overview cards, 7-day chart, and recent activity feed.
+ * KPI strip (week over week), DM/click analysis chart, ranking panel and
+ * recent activity — laid out after the reference admin theme.
  */
 
 import { useI18n } from "@/lib/i18n/provider";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
-import StatCard from "@/components/stat-card";
-import StatusBadge from "@/components/status-badge";
+import KpiStrip, { type KpiItem } from "@/components/dashboard/kpi-strip";
+import PerformanceChart from "@/components/dashboard/performance-chart";
+import RankingPanel, { type RankingColumn } from "@/components/dashboard/ranking-panel";
+import RecentActivity, { type RecentLog } from "@/components/dashboard/recent-activity";
+import type { DashboardKpis, DashboardRankings } from "@/lib/dashboard/analytics";
+import type { SeriesPoint, SeriesRange } from "@/lib/dashboard/series";
+
+// Mirrors DIRECT_REFERRER in lib/dashboard/analytics.ts (server-only module).
+const DIRECT_REFERRER = "__direct__";
 
 interface DashboardStats {
   userName: string | null;
   contactsCount: number;
   totalAutomations: number;
   activeAutomations: number;
-  dmsSentToday: number;
-  dmsSentWeek: number;
-  dmsSentMonth: number;
-  dmsSkippedMonth: number;
-  dmsFailedMonth: number;
-  totalDMs: number;
-  clicksThisMonth: number;
-  totalClicks: number;
-  ctrThisMonth: number;
   instagramAccounts: AccountOption[];
-  selectedInstagramAccountId: string | null;
-  topKeywords: { keyword: string; count: number }[];
-  dailyDMs: { date: string; count: number }[];
-  recentLogs: Array<{
-    id: string;
-    commenterName: string | null;
-    commentText: string;
-    status: string;
-    createdAt: string;
-    automation: { name: string };
-    instagramAccount?: { username: string };
-  }>;
+  series: SeriesPoint[];
+  range: SeriesRange;
+  recentLogs: RecentLog[];
+  kpis: DashboardKpis | null;
+  rankings: DashboardRankings | null;
 }
 
 export default function DashboardPage() {
-  const { t, label } = useI18n();
+  const { t, locale } = useI18n();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
 
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (selectedAccountId !== "all") {
-      params.set("instagramAccountId", selectedAccountId);
-    }
+  const [range, setRange] = useState<SeriesRange>("daily");
+  const [series, setSeries] = useState<SeriesPoint[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  // Read by the stats effect so an account switch keeps the chosen range
+  // without re-running the full stats request on every range toggle.
+  const rangeRef = useRef<SeriesRange>("daily");
+  const seriesRequest = useRef<AbortController | null>(null);
 
-    fetch(`/api/dashboard/stats${params.size ? `?${params}` : ""}`)
+  useEffect(() => {
+    const controller = new AbortController();
+    const params = new URLSearchParams({ include: "analytics", range: rangeRef.current });
+    if (selectedAccountId !== "all") params.set("instagramAccountId", selectedAccountId);
+
+    fetch(`/api/dashboard/stats?${params}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) setStats(data.data);
+        if (data.success) {
+          setStats(data.data);
+          setSeries(data.data.series);
+        }
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch((error) => {
+        if (error?.name !== "AbortError") console.error(error);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
   }, [selectedAccountId]);
 
   function handleAccountChange(accountId: string) {
@@ -67,43 +75,115 @@ export default function DashboardPage() {
     setSelectedAccountId(accountId);
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="panel rounded p-5 h-32">
-              <div className="w-10 h-10 rounded bg-surface-hover" />
-              <div className="mt-4 h-6 w-16 bg-surface-hover rounded" />
-              <div className="mt-2 h-4 w-24 bg-surface-hover/60 rounded" />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+  function handleRangeChange(next: SeriesRange) {
+    if (next === range) return;
+    setRange(next);
+    rangeRef.current = next;
+    setChartLoading(true);
+
+    seriesRequest.current?.abort();
+    const controller = new AbortController();
+    seriesRequest.current = controller;
+    const params = new URLSearchParams({ range: next });
+    if (selectedAccountId !== "all") params.set("instagramAccountId", selectedAccountId);
+
+    fetch(`/api/dashboard/series?${params}`, { signal: controller.signal })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success) setSeries(res.data.series);
+      })
+      .catch((error) => {
+        if (error?.name !== "AbortError") console.error(error);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setChartLoading(false);
+      });
   }
 
-  const maxDM = Math.max(...(stats?.dailyDMs.map((d) => d.count) ?? [1]), 1);
+  const fmt = (n: number) => n.toLocaleString(locale);
+  const kpis = stats?.kpis;
+  const kpiItems: KpiItem[] = [
+    { id: "dms", label: t("DMs sent"), value: fmt(kpis?.dms.current ?? 0), trend: kpis?.dms },
+    { id: "clicks", label: t("Link clicks"), value: fmt(kpis?.clicks.current ?? 0), trend: kpis?.clicks },
+    {
+      id: "ctr",
+      label: t("Click-through rate"),
+      value: `${(kpis?.ctr.current ?? 0).toLocaleString(locale, { maximumFractionDigits: 1 })}%`,
+      trend: kpis?.ctr,
+    },
+    { id: "contacts", label: t("Unique contacts"), value: fmt(kpis?.contacts.current ?? 0), trend: kpis?.contacts },
+  ];
+
+  const rankings = stats?.rankings;
+  const sourceLabels: Record<string, string> = {
+    SENT: t("Sent"),
+    SKIPPED: t("Skipped"),
+    FAILED: t("Failed"),
+    [DIRECT_REFERRER]: t("Direct"),
+  };
+  const rankingColumns: RankingColumn[] = [
+    {
+      id: "keywords",
+      title: t("Top Keywords"),
+      empty: t("No keyword matches yet"),
+      tabs: [
+        { value: "week", label: t("Last 7 days"), rows: rankings?.keywords.week ?? [] },
+        { value: "month", label: t("Last 30 days"), rows: rankings?.keywords.month ?? [] },
+        { value: "all", label: t("All time"), rows: rankings?.keywords.all ?? [] },
+      ],
+    },
+    {
+      id: "campaigns",
+      title: t("Top Campaigns"),
+      subtitle: t("Last 30 days"),
+      empty: t("No campaign activity yet"),
+      tabs: [
+        { value: "dms", label: t("DMs sent"), rows: rankings?.campaigns.dms ?? [] },
+        { value: "clicks", label: t("Clicks"), rows: rankings?.campaigns.clicks ?? [] },
+      ],
+    },
+    {
+      id: "sources",
+      title: t("Results & Sources"),
+      subtitle: t("Last 30 days"),
+      empty: t("No data yet"),
+      formatLabel: (label) => sourceLabels[label] ?? label,
+      tabs: [
+        { value: "outcomes", label: t("Outcomes"), rows: rankings?.sources.outcomes ?? [] },
+        { value: "links", label: t("Links"), rows: rankings?.sources.links ?? [] },
+        { value: "referrers", label: t("Referrers"), rows: rankings?.sources.referrers ?? [] },
+      ],
+    },
+  ];
 
   const connectedCount = stats?.instagramAccounts.length ?? 0;
+  const initialLoad = loading && !stats;
 
   return (
-    <div className="space-y-8">
-      {/* Greeting header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
-            {t("Hello, {name}!", { name: stats?.userName ?? t("there") })}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            {t(connectedCount === 1 ? "{count} connected account" : "{count} connected accounts", { count: connectedCount })}
-            {" · "}
-            {t(stats?.contactsCount === 1 ? "{count} contact" : "{count} contacts", { count: stats?.contactsCount ?? 0 })}
-            {" · "}
-            <a href="/logs" className="text-accent hover:underline">
-              {t("See activity")}
-            </a>
-          </p>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          {initialLoad ? (
+            <>
+              <div className="h-8 w-56 animate-pulse rounded-lg bg-surface-hover" />
+              <div className="mt-2 h-4 w-72 animate-pulse rounded bg-surface-hover" />
+            </>
+          ) : (
+            <>
+              <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
+                {t("Hello, {name}!", { name: stats?.userName ?? t("there") })}
+              </h1>
+              <p className="mt-1 text-sm text-muted">
+                {t(connectedCount === 1 ? "{count} connected account" : "{count} connected accounts", { count: connectedCount })}
+                {" · "}
+                {t(stats?.activeAutomations === 1 ? "{count} active campaign" : "{count} active campaigns", {
+                  count: stats?.activeAutomations ?? 0,
+                })}
+                {" · "}
+                {t(stats?.contactsCount === 1 ? "{count} contact" : "{count} contacts", { count: stats?.contactsCount ?? 0 })}
+              </p>
+            </>
+          )}
         </div>
         {stats && stats.instagramAccounts.length > 1 && (
           <AccountSelect
@@ -114,92 +194,22 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-        <StatCard
-          label={t("Active Campaigns")}
-          value={stats?.activeAutomations ?? 0}
-        />
-        <StatCard label={t("DMs Sent")} value={stats?.dmsSentMonth ?? 0} />
-        <StatCard label={t("Skipped")} value={stats?.dmsSkippedMonth ?? 0} />
-        <StatCard label={t("Failed")} value={stats?.dmsFailedMonth ?? 0} />
-        <StatCard label={t("Clicks")} value={stats?.clicksThisMonth ?? 0} />
-        <StatCard label={t("CTR")} value={`${stats?.ctrThisMonth ?? 0}%`} />
-      </div>
+      <KpiStrip items={kpiItems} caption={t("Compared to last week")} loading={loading} />
 
-      {/* Chart + Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 sm:gap-6">
-        {/* 7-Day Chart */}
-        <div className="lg:col-span-3 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-6">{t("DMs — Last 7 Days")}</h2>
-          <div className="flex items-end gap-1.5 h-40 sm:gap-2">
-            {stats?.dailyDMs.map((day) => (
-              <div key={label(day.date)} className="min-w-0 flex-1 h-full flex flex-col items-center gap-2">
-                <span className="text-xs text-muted font-medium">{day.count}</span>
-                {/* A percentage height needs a parent with a definite height, so
-                    the bar sits in a wrapper that fills the column's free space. */}
-                <div className="w-full min-h-0 flex-1 flex items-end">
-                  <div
-                    className="w-full rounded-sm bg-accent min-h-[4px]"
-                    style={{ height: `${Math.max((day.count / maxDM) * 100, 4)}%` }}
-                  />
-                </div>
-                {/* Seven labels share a phone's width, so they must not wrap. */}
-                <span className="w-full truncate text-center text-[10px] text-zinc-500">
-                  {label(day.date)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+      <PerformanceChart
+        data={series}
+        range={range}
+        onRangeChange={handleRangeChange}
+        loading={loading || chartLoading}
+      />
 
-        {/* Top Keywords */}
-        <div className="lg:col-span-1 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-4">{t("Top Keywords")}</h2>
-          <div className="space-y-3">
-            {stats?.topKeywords.length === 0 && (
-              <p className="text-sm text-muted py-8">{t("No keyword matches yet")}</p>
-            )}
-            {stats?.topKeywords.map((keyword) => (
-              <div key={keyword.keyword} className="flex items-center justify-between gap-3">
-                <span className="truncate text-sm font-medium text-foreground">
-                  {keyword.keyword}
-                </span>
-                <span className="text-xs text-muted">{keyword.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      <RankingPanel columns={rankingColumns} loading={loading} />
 
-        {/* Recent Activity */}
-        <div className="lg:col-span-2 panel rounded p-4 sm:p-6">
-          <h2 className="text-sm font-semibold text-foreground mb-4">{t("Recent Activity")}</h2>
-          <div className="space-y-3 max-h-60 overflow-y-auto">
-            {stats?.recentLogs.length === 0 && (
-              <p className="text-sm text-muted text-center py-8">{t("No activity yet")}</p>
-            )}
-            {stats?.recentLogs.map((log) => (
-              <div
-                key={log.id}
-                className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-0"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    @{log.commenterName ?? "unknown"}
-                  </p>
-                  <p className="text-xs text-muted truncate">
-                    {log.instagramAccount
-                      ? `@${log.instagramAccount.username} · `
-                      : ""}
-                    {log.commentText}
-                  </p>
-                </div>
-                <StatusBadge status={log.status} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {initialLoad ? (
+        <div className="panel h-64 animate-pulse bg-surface-hover/40" />
+      ) : (
+        <RecentActivity logs={stats?.recentLogs ?? []} showAccount={connectedCount > 1} />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { getMetaGraphApiVersion, requireEnv } from "@/lib/env";
+import type { MessageExtras } from "@/lib/inbox/types";
 
 function instagramGraphBase() {
   return `https://graph.instagram.com/${getMetaGraphApiVersion()}`;
@@ -489,6 +490,10 @@ export async function getRecentMediaComments(
 export interface InstagramParticipant {
   id: string;
   username?: string;
+  /** Display name (Zernio provider only). */
+  name?: string;
+  /** Profile picture URL (Zernio provider only). */
+  picture?: string | null;
 }
 
 export interface InstagramMessage {
@@ -497,6 +502,8 @@ export interface InstagramMessage {
   message?: string;
   from?: InstagramParticipant;
   to?: { data: InstagramParticipant[] };
+  /** Templates, buttons, attachments… (Zernio provider only). */
+  extras?: MessageExtras;
 }
 
 export interface InstagramConversation {
@@ -505,6 +512,10 @@ export interface InstagramConversation {
   updated_time?: string;
   participants?: { data: InstagramParticipant[] };
   messages?: { data: InstagramMessage[] };
+  /** Zernio provider only. */
+  unread_count?: number | null;
+  /** Link to the thread on Instagram (Zernio provider only). */
+  link?: string | null;
 }
 
 /**

@@ -11,13 +11,22 @@ import { createInstagramContext } from "@/lib/instagram/provider";
 export interface ConversationListItem {
   id: string;
   detailsUnavailable?: boolean;
-  contact: { id: string; username: string | null };
+  contact: {
+    id: string;
+    username: string | null;
+    name: string | null;
+    picture: string | null;
+  };
   updatedTime: string | null;
   lastMessage: {
     text: string;
-    fromMe: boolean;
+    /** null when the provider doesn't say who sent it (Zernio list). */
+    fromMe: boolean | null;
     createdTime: string | null;
   } | null;
+  unreadCount: number | null;
+  /** Thread link on Instagram, when the provider supplies one. */
+  url: string | null;
 }
 
 export interface ConversationsResponse {
@@ -65,15 +74,19 @@ export async function GET(request: NextRequest) {
         contact: {
           id: contact?.id ?? "",
           username: contact?.username ?? null,
+          name: contact?.name ?? null,
+          picture: contact?.picture ?? null,
         },
         updatedTime: c.updated_time ?? null,
         lastMessage: last
           ? {
               text: last.message ?? "",
-              fromMe: last.from?.id === account.instagramId,
+              fromMe: last.from ? last.from.id === account.instagramId : null,
               createdTime: last.created_time ?? null,
             }
           : null,
+        unreadCount: c.unread_count ?? null,
+        url: c.link ?? null,
       };
     });
 

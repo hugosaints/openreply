@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import DashboardShell from "@/components/dashboard-shell";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
-import { ensureWorkspaceForUser } from "@/lib/workspace";
+import { ensureWorkspaceForUser, getWorkspaceMembership } from "@/lib/workspace";
 
 export async function generateMetadata() {
   const { t } = await getI18n();
@@ -27,6 +27,7 @@ export default async function DashboardLayout({
     session.user.id,
     session.user.email
   );
+  const membership = await getWorkspaceMembership(session.user.id);
   const accounts = await prisma.instagramAccount.findMany({
     where: { workspaceId: workspace.id },
     orderBy: { connectedAt: "desc" },
@@ -37,8 +38,15 @@ export default async function DashboardLayout({
     <I18nProvider locale={locale}>
       <DashboardShell
         workspaceName={workspace.name}
-        instagramUsername={accounts[0]?.username ?? null}
         instagramAccountCount={accounts.length}
+        role={membership?.role ?? "OWNER"}
+        userName={
+          session.user.name?.trim() ||
+          session.user.email?.split("@")[0] ||
+          workspace.name
+        }
+        userEmail={session.user.email ?? null}
+        userImage={session.user.image ?? null}
       >
         {children}
       </DashboardShell>

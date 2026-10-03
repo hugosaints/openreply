@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
+import { getDashboardKpis, getDashboardRankings } from "@/lib/dashboard/analytics";
+import { getDashboardSeries, parseSeriesRange } from "@/lib/dashboard/series";
+import { LOCALE_COOKIE, resolveLocale } from "@/lib/i18n";
 import {
   calculateCtr,
   normalizeTopKeywords,
@@ -151,27 +154,30 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
-  const dailyDMs: { date: string; count: number }[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const dayStart = new Date(todayStart);
-    dayStart.setDate(dayStart.getDate() - i);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+  const range = parseSeriesRange(request.nextUrl.searchParams.get("range"));
+  const locale = resolveLocale(request.cookies.get(LOCALE_COOKIE)?.value);
+  // KPI trends and rankings are only needed by the dashboard home; the other
+  // pages that read this endpoint (account lists etc.) skip them.
+  const includeAnalytics =
+    request.nextUrl.searchParams.get("include") === "analytics";
 
-    const count = await prisma.dmLog.count({
-      where: {
-        workspaceId,
-        status: "SENT",
-        createdAt: { gte: dayStart, lt: dayEnd },
-        ...accountFilter,
-      },
-    });
+  const [series, kpis, rankings] = await Promise.all([
+    getDashboardSeries({
+      workspaceId,
+      instagramAccountId: selectedAccountId,
+      range,
+      locale,
+      now,
+    }),
+    includeAnalytics
+      ? getDashboardKpis({ workspaceId, instagramAccountId: selectedAccountId, now })
+      : Promise.resolve(null),
+    includeAnalytics
+      ? getDashboardRankings({ workspaceId, instagramAccountId: selectedAccountId, now })
+      : Promise.resolve(null),
+  ]);
 
-    dailyDMs.push({
-      date: dayStart.toLocaleDateString("en-US", { weekday: "short" }),
-      count,
-    });
-  }
+  const dailyDMs = series.map((s) => ({ date: s.date, count: s.dms }));
 
   const monthlyStatusSummary = summarizeDmStatuses(
     dmStatusCountsThisMonth.map((row) => ({
@@ -213,7 +219,11 @@ export async function GET(request: NextRequest) {
       ctrThisMonth: calculateCtr(clicksThisMonth, dmsSentMonth),
       topKeywords,
       dailyDMs,
+      series,
+      range,
       recentLogs,
+      kpis,
+      rankings,
     },
   });
 }

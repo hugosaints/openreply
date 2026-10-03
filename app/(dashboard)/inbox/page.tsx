@@ -10,13 +10,17 @@
  * surfaced verbatim when it applies.
  */
 
-import type { Locale } from "@/lib/i18n";
-import { useI18n } from "@/lib/i18n/provider";
-import { useCallback, useEffect, useRef, useState } from "react";
-import AccountSelect, { type AccountOption } from "@/components/account-select";
-import { readCache, writeCache } from "@/lib/client-cache";
 import type { ConversationListItem } from "@/app/api/instagram/conversations/route";
 import type { ThreadMessage } from "@/app/api/instagram/conversations/[id]/route";
+import AccountSelect, { type AccountOption } from "@/components/account-select";
+import ConversationList from "@/components/inbox/conversation-list";
+import ThreadView from "@/components/inbox/thread-view";
+import { readCache, writeCache } from "@/lib/client-cache";
+import { useNow } from "@/lib/hooks/use-now";
+import { useI18n } from "@/lib/i18n/provider";
+import { isAwaitingReply } from "@/lib/inbox/thread";
+import { IconBrandInstagram, IconMessages, IconRefresh } from "@tabler/icons-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const POLL_MS = 12_000;
 // Cached list/threads are shown instantly on revisit, then revalidated in the
@@ -26,20 +30,11 @@ const CACHE_MAX_AGE_MS = 60_000;
 const convCacheKey = (accountId: string) => `inbox:convs:${accountId}`;
 const msgCacheKey = (conversationId: string) => `inbox:msgs:${conversationId}`;
 
-function formatTime(iso: string | null, locale: Locale): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return sameDay
-    ? d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })
-    : d.toLocaleDateString(locale, { month: "short", day: "numeric" });
-}
-
 export default function InboxPage() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const now = useNow();
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
   // Seed from the last-used account so a revisit can paint the cached
   // conversation list immediately, before the account list even loads.
   const [selectedAccountId, setSelectedAccountId] = useState(() => {
@@ -49,11 +44,13 @@ export default function InboxPage() {
 
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [convLoading, setConvLoading] = useState(true);
+  const [convRefreshing, setConvRefreshing] = useState(false);
   const [convError, setConvError] = useState<string | null>(null);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
+  const [threadRefreshing, setThreadRefreshing] = useState(false);
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -63,6 +60,8 @@ export default function InboxPage() {
   const conversationRequests = useRef(new Set<string>());
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? null;
+  const awaitingCount = conversations.filter(isAwaitingReply).length;
 
   // Accounts for the selector; default to the first connected account. Uses the
   // lightweight accounts endpoint (one query) rather than the heavy dashboard
@@ -83,7 +82,8 @@ export default function InboxPage() {
             : payload.data.selectedInstagramAccountId || next[0]?.id || "";
         });
       })
-      .catch(() => setAccounts([]));
+      .catch(() => setAccounts([]))
+      .finally(() => setAccountsLoaded(true));
   }, []);
 
   // Remember the chosen account for the next visit.
@@ -200,6 +200,7 @@ export default function InboxPage() {
   }, [messages]);
 
   function openConversation(id: string) {
+    if (id !== activeId) setDraft("");
     setActiveId(id);
     setSendError(null);
     // Paint any cached thread synchronously so the pane never flashes empty
@@ -207,6 +208,19 @@ export default function InboxPage() {
     const cached = readCache<ThreadMessage[]>(msgCacheKey(id), CACHE_MAX_AGE_MS);
     setMessages(cached.data ?? []);
     setThreadLoading(!cached.data);
+  }
+
+  async function refreshConversations() {
+    setConvRefreshing(true);
+    await loadConversations(true);
+    setConvRefreshing(false);
+  }
+
+  async function refreshThread() {
+    if (!activeId) return;
+    setThreadRefreshing(true);
+    await loadMessages(activeId, true);
+    setThreadRefreshing(false);
   }
 
   async function handleSend() {
@@ -244,181 +258,130 @@ export default function InboxPage() {
         // Roll the optimistic message back and restore the draft so it's not lost.
         setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
         setDraft(text);
-        setSendError(data.error ?? t("Failed to send message"));
+        setSendError(data.error ?? "Failed to send message");
       }
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setDraft(text);
-      setSendError(t("Failed to send message"));
+      setSendError("Failed to send message");
     } finally {
       setSending(false);
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
-  }
+  const noAccounts = accountsLoaded && accounts.length === 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
-        <h1 className="text-lg font-semibold text-foreground">{t("Inbox")}</h1>
-        {accounts.length > 1 && (
-          <AccountSelect
-            accounts={accounts}
-            value={selectedAccountId}
-            onChange={setSelectedAccountId}
-            includeAll={false}
-          />
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">{t("Inbox")}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {selectedAccount ? (
+              <>
+                {t("Direct messages for")}{" "}
+                <span className="font-medium text-foreground">@{selectedAccount.username}</span>
+                {!convLoading && awaitingCount > 0 && (
+                  <>
+                    {" · "}
+                    <span className="font-medium text-accent">
+                      {t(awaitingCount === 1 ? "{count} awaiting reply" : "{count} awaiting replies", { count: awaitingCount })}
+                    </span>
+                  </>
+                )}
+              </>
+            ) : (
+              t("Reply to your Instagram direct messages.")
+            )}
+          </p>
+        </div>
+        {!noAccounts && (
+          <div className="flex flex-wrap items-end gap-3">
+            {accounts.length > 1 && (
+              <AccountSelect
+                accounts={accounts}
+                value={selectedAccountId}
+                onChange={setSelectedAccountId}
+                includeAll={false}
+              />
+            )}
+            <button
+              type="button"
+              id="inbox-refresh"
+              onClick={() => void refreshConversations()}
+              disabled={convLoading || convRefreshing || !selectedAccountId}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-hover disabled:opacity-60"
+            >
+              <IconRefresh size={16} stroke={1.5} className={convRefreshing ? "animate-spin" : ""} />
+              {t("Refresh")}
+            </button>
+          </div>
         )}
       </div>
 
-      <div className="grid h-[calc(100dvh-11rem)] grid-cols-1 overflow-hidden rounded border border-border sm:grid-cols-[300px_1fr]">
-        {/* Conversation list. On mobile it takes the full pane and is hidden
-            once a thread is open (ManyChat-style); on sm+ it is always shown. */}
-        <div
-          className={`min-h-0 flex-col border-b border-border sm:flex sm:border-b-0 sm:border-r ${
-            active ? "hidden" : "flex"
-          }`}
-        >
-          <div className="shrink-0 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
-            {t("Conversations")}
+      {noAccounts ? (
+        <div className="panel flex flex-col items-center px-6 py-16 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <IconBrandInstagram size={22} stroke={1.5} />
+          </span>
+          <h2 className="mt-4 font-heading text-lg font-semibold text-foreground">{t("Connect Instagram to use the inbox")}</h2>
+          <p className="mt-1 max-w-md text-sm text-muted">
+            {t("Once an account is connected, its direct messages show up here and you can reply without leaving OpenReply.")}
+          </p>
+          <a
+            href="/api/instagram/connect"
+            className="mt-5 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            <IconBrandInstagram size={16} stroke={1.75} />
+            {t("Connect Instagram")}
+          </a>
+        </div>
+      ) : (
+        <div className="grid h-[calc(100dvh-13rem)] min-h-[460px] grid-cols-1 overflow-hidden rounded-xl border border-border bg-surface sm:grid-cols-[300px_1fr] lg:grid-cols-[340px_1fr]">
+          {/* Conversation list. On mobile it takes the full pane and is hidden
+              once a thread is open (ManyChat-style); on sm+ it is always shown. */}
+          <div className={`min-h-0 flex-col sm:flex sm:border-r sm:border-border ${active ? "hidden" : "flex"}`}>
+            <ConversationList
+              conversations={conversations}
+              loading={convLoading}
+              error={convError}
+              activeId={activeId}
+              onSelect={openConversation}
+              now={now}
+            />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {convLoading ? (
-              <p className="px-4 py-6 text-sm text-muted">{t("Loading…")}</p>
-            ) : convError ? (
-              <p className="px-4 py-6 text-sm text-error">{convError === "Failed to load conversations" ? t("Failed to load conversations") : convError}</p>
-            ) : conversations.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-muted">{t("No conversations yet.")}</p>
+
+          {/* Thread. On mobile it is only shown once a conversation is open and
+              fills the pane; on sm+ it always sits beside the list. */}
+          <div className={`min-h-0 flex-col ${active ? "flex" : "hidden sm:flex"}`}>
+            {!active ? (
+              <div className="flex flex-1 flex-col items-center justify-center bg-[#fafbfc] p-6 text-center">
+                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-soft text-accent">
+                  <IconMessages size={26} stroke={1.5} />
+                </span>
+                <p className="mt-4 font-heading text-base font-semibold text-foreground">{t("Your messages")}</p>
+                <p className="mt-1 max-w-xs text-sm text-muted">{t("Select a conversation to read and reply.")}</p>
+              </div>
             ) : (
-              conversations.map((c) => {
-                const isActive = c.id === activeId;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => openConversation(c.id)}
-                    className={`block w-full border-b border-border px-4 py-3 text-left ${
-                      isActive ? "bg-surface-hover" : "hover:bg-surface-hover"
-                    }`}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-medium text-foreground">
-                        {c.detailsUnavailable ? t("Details unavailable") : `@${c.contact.username ?? "unknown"}`}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-zinc-500">
-                        {formatTime(c.updatedTime, locale)}
-                      </span>
-                    </div>
-                    {c.detailsUnavailable && (
-                      <p className="mt-0.5 text-xs text-muted">{t("Instagram could not load this conversation.")}</p>
-                    )}
-                    {c.lastMessage && (
-                      <p className="mt-0.5 truncate text-xs text-muted">
-                        {c.lastMessage.fromMe ? t("You: ") : ""}
-                        {c.lastMessage.text || t("(no text)")}
-                      </p>
-                    )}
-                  </button>
-                );
-              })
+              <ThreadView
+                conversation={active}
+                messages={messages}
+                loading={threadLoading}
+                refreshing={threadRefreshing}
+                draft={draft}
+                onDraftChange={setDraft}
+                sending={sending}
+                sendError={sendError}
+                onSend={() => void handleSend()}
+                onBack={() => setActiveId(null)}
+                onRefresh={() => void refreshThread()}
+                now={now}
+                scrollRef={scrollRef}
+              />
             )}
           </div>
         </div>
-
-        {/* Thread. On mobile it is only shown once a conversation is open and
-            fills the pane; on sm+ it always sits beside the list. */}
-        <div
-          className={`min-h-0 flex-col ${active ? "flex" : "hidden sm:flex"}`}
-        >
-          {!active ? (
-            <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted">
-              {t("Select a conversation to read and reply.")}
-            </div>
-          ) : (
-            <>
-              <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold text-foreground">
-                <button
-                  type="button"
-                  onClick={() => setActiveId(null)}
-                  className="-ml-1 rounded px-2 py-1 text-muted hover:text-foreground sm:hidden"
-                  aria-label={t("Back to conversations")}
-                >
-                  {t("Back")}
-                </button>
-                <span className="truncate">
-                  {active.detailsUnavailable ? t("Details unavailable") : `@${active.contact.username ?? "unknown"}`}
-                </span>
-              </div>
-
-              <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-                {active.detailsUnavailable ? (
-                  <p role="status" className="text-sm text-muted">
-                    {t("Instagram could not load the details of this conversation. Other conversations are still available. You can check this chat in Instagram.")}
-                  </p>
-                ) : threadLoading && messages.length === 0 ? (
-                  <p className="text-sm text-muted">{t("Loading…")}</p>
-                ) : messages.length === 0 ? (
-                  <p className="text-sm text-muted">{t("No messages.")}</p>
-                ) : (
-                  messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`flex ${m.fromMe ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                          m.fromMe
-                            ? "bg-accent text-white"
-                            : "bg-surface text-foreground border border-border"
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                        <p
-                          className={`mt-1 text-[10px] ${
-                            m.fromMe ? "text-white/70" : "text-zinc-500"
-                          }`}
-                        >
-                          {formatTime(m.createdTime, locale)}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="shrink-0 border-t border-border p-3">
-                {sendError && (
-                  <p className="mb-2 text-xs text-error">{sendError}</p>
-                )}
-                <div className="flex items-end gap-2">
-                  <textarea
-                    disabled={active.detailsUnavailable || !active.contact.id}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    rows={1}
-                    placeholder={t("Write a reply…  (Enter to send, Shift+Enter for a new line)")}
-                    className="max-h-32 min-h-[40px] flex-1 resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleSend()}
-                    disabled={sending || !draft.trim() || !active.contact.id || active.detailsUnavailable}
-                    className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-                  >
-                    {sending ? t("Sending…") : t("Send")}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

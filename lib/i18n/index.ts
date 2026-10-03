@@ -50,6 +50,10 @@ const labels: Record<string, StaticMessageKey> = {
   Fri: "Fri",
   Sat: "Sat",
   Sun: "Sun",
+  WORKER: "Worker",
+  TOKEN_REFRESH: "Token refresh",
+  HEALTH: "Health",
+  SYSTEM: "System",
 };
 
 export function createI18n(locale: Locale) {

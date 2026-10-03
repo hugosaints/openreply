@@ -6,8 +6,9 @@ import {
   MetaApiError,
 } from "@/lib/instagram/provider";
 import { createInstagramContext } from "@/lib/instagram/provider";
+import type { MessageExtras } from "@/lib/inbox/types";
 
-export interface ThreadMessage {
+export interface ThreadMessage extends MessageExtras {
   id: string;
   text: string;
   fromMe: boolean;
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest, { params }: RouteProps) {
     // The API returns newest-first; reverse to read top-to-bottom.
     const messages: ThreadMessage[] = raw
       .map((m) => ({
+        ...m.extras,
         id: m.id,
         text: m.message ?? "",
         fromMe: m.from?.id === account.instagramId,
