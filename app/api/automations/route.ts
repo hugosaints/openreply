@@ -133,15 +133,24 @@ export async function GET(request: NextRequest) {
       { status: 401 }
     );
   }
-  const instagramAccountId =
-    request.nextUrl.searchParams.get("instagramAccountId");
+
+  const searchParams = request.nextUrl.searchParams;
+  const instagramAccountId = searchParams.get("instagramAccountId");
+  const id = searchParams.get("id");
+  const pageParam = searchParams.get("page");
+  const limitParam = searchParams.get("limit");
+  const search = searchParams.get("search")?.trim() || "";
+  const status = searchParams.get("status") || "all";
+  const sort = searchParams.get("sort") || "recent";
+
   const accountFilter =
     instagramAccountId && instagramAccountId !== "all"
       ? { instagramAccountId }
       : {};
+  const idFilter = id ? { id } : {};
 
   const automations = await prisma.automation.findMany({
-    where: { workspaceId, ...accountFilter },
+    where: { workspaceId, ...accountFilter, ...idFilter },
     include: {
       instagramAccount: {
         select: { username: true, instagramId: true },
@@ -247,33 +256,119 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const mapped = automationsWithReports.map((automation) => {
+    const item = analytics.get(automation.id) ?? {
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      clicks: 0,
+      topKeywords: [],
+    };
+
+    return {
+      ...automation,
+      trackedLinks: automation.trackedLinks.map((link) => ({
+        ...link,
+        trackedUrl: buildTrackedUrl(link.slug),
+      })),
+      reportUrl: automation.reportShareSlug
+        ? buildReportUrl(automation.reportShareSlug)
+        : null,
+      analytics: {
+        ...item,
+        ctr: calculateCtr(item.clicks, item.sent),
+      },
+    };
+  });
+
+  // Calculate overall workspace/account-wide counts and summary
+  const activeCount = mapped.filter((a) => a.isActive).length;
+  const pausedCount = mapped.length - activeCount;
+  const totalSent = mapped.reduce((sum, a) => sum + a.analytics.sent, 0);
+  const totalClicks = mapped.reduce((sum, a) => sum + a.analytics.clicks, 0);
+  const totalSkipped = mapped.reduce((sum, a) => sum + a.analytics.skipped, 0);
+  const totalFailed = mapped.reduce((sum, a) => sum + a.analytics.failed, 0);
+  const overallCtr =
+    totalSent > 0 ? Math.round((totalClicks / totalSent) * 1000) / 10 : 0;
+
+  const counts = {
+    all: mapped.length,
+    active: activeCount,
+    paused: pausedCount,
+  };
+
+  const summary = {
+    total: mapped.length,
+    active: activeCount,
+    paused: pausedCount,
+    sent: totalSent,
+    skipped: totalSkipped,
+    failed: totalFailed,
+    clicks: totalClicks,
+    ctr: overallCtr,
+  };
+
+  // Filter by status and search query
+  let filtered = [...mapped];
+  if (status === "active") {
+    filtered = filtered.filter((a) => a.isActive);
+  } else if (status === "paused") {
+    filtered = filtered.filter((a) => !a.isActive);
+  }
+
+  if (search) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter((a) => {
+      const matchName = a.name.toLowerCase().includes(q);
+      const matchDm = a.dmMessage.toLowerCase().includes(q);
+      const matchKeyword = a.keywords.some((k) => k.toLowerCase().includes(q));
+      const matchUsername = a.instagramAccount?.username
+        ?.toLowerCase()
+        ?.includes(q);
+      return matchName || matchDm || matchKeyword || matchUsername;
+    });
+  }
+
+  // Sort
+  if (sort === "sent") {
+    filtered.sort((a, b) => b.analytics.sent - a.analytics.sent);
+  } else if (sort === "clicks") {
+    filtered.sort((a, b) => b.analytics.clicks - a.analytics.clicks);
+  } else if (sort === "name") {
+    filtered.sort((a, b) => a.name.localeCompare(b.name));
+  } else {
+    // default recent
+    filtered.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+  }
+
+  const total = filtered.length;
+  const hasPagination = pageParam !== null || limitParam !== null;
+  const page = Math.max(1, Number.parseInt(pageParam ?? "1", 10));
+  const limit = Math.min(
+    50,
+    Math.max(1, Number.parseInt(limitParam ?? "10", 10))
+  );
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const skip = (page - 1) * limit;
+
+  const data = hasPagination ? filtered.slice(skip, skip + limit) : filtered;
+
   return NextResponse.json(
     {
-    success: true,
-    data: automationsWithReports.map((automation) => {
-      const item = analytics.get(automation.id) ?? {
-        sent: 0,
-        skipped: 0,
-        failed: 0,
-        clicks: 0,
-        topKeywords: [],
-      };
-
-      return {
-        ...automation,
-        trackedLinks: automation.trackedLinks.map((link) => ({
-          ...link,
-          trackedUrl: buildTrackedUrl(link.slug),
-        })),
-        reportUrl: automation.reportShareSlug
-          ? buildReportUrl(automation.reportShareSlug)
-          : null,
-        analytics: {
-          ...item,
-          ctr: calculateCtr(item.clicks, item.sent),
-        },
-      };
-    }),
+      success: true,
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+      counts,
+      summary,
     },
     { headers: { "Cache-Control": "no-store" } }
   );

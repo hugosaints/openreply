@@ -125,3 +125,50 @@ export const IconChart = ({ className = "h-4 w-4" }: IconProps) => (
     <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
   </svg>
 );
+export const IconSend = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <path d="M22 2L11 13" />
+    <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+  </svg>
+);
+export const IconCursorClick = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <path d="M15 15l5 5" />
+    <path d="M4 4l7.07 17 2.51-7.39L21 11.07 4 4z" />
+  </svg>
+);
+export const IconTrendingUp = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+    <polyline points="17 6 23 6 23 12" />
+  </svg>
+);
+export const IconAlertCircle = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
+export const IconMessage = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
+  </svg>
+);
+export const IconChevronLeft = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+);
+export const IconChevronRight = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <path d="M9 18l6-6-6-6" />
+  </svg>
+);
+export const IconInstagram = ({ className = "h-4 w-4" }: IconProps) => (
+  <svg {...base} className={className} aria-hidden="true">
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z" />
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </svg>
+);

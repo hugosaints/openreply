@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Campaigns list — KPI strip, search/filter/sort toolbar and one card per
- * campaign. Data comes from the existing `GET /api/automations`.
+ * Campaigns list — KPI strip, search/filter/sort toolbar, modern campaign cards,
+ * and server-driven backend pagination.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,22 +15,48 @@ import CampaignCard, { type CampaignListItem } from "@/components/campaigns/camp
 import ConfirmDialog from "@/components/campaigns/confirm-dialog";
 import ReelLightbox, { type PlayingReel } from "@/components/campaigns/reel-lightbox";
 import { inputClass } from "@/components/campaigns/fields";
-import { IconPlus, IconSearch, IconSparkle, IconUpload } from "@/components/campaigns/icons";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconPlus,
+  IconSearch,
+  IconSparkle,
+  IconUpload,
+} from "@/components/campaigns/icons";
 import { useCampaignAccounts } from "@/components/campaigns/use-campaign-data";
 import { readCache, writeCache } from "@/lib/client-cache";
 import {
   aggregateCampaigns,
-  filterCampaigns,
   formatCompact,
   formatPercent,
-  sortCampaigns,
   statusCounts,
   type CampaignSort,
   type CampaignStatusFilter,
+  type CampaignTotals,
 } from "@/lib/campaigns/summary";
 import { CAMPAIGN_TEMPLATES } from "@/lib/templates/campaign-templates";
 
 const LIST_TEMPLATES = CAMPAIGN_TEMPLATES.slice(0, 6);
+
+interface BackendPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  if (total <= 5) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (current <= 3) {
+    return [1, 2, 3, 4, "...", total];
+  }
+  if (current >= total - 2) {
+    return [1, "...", total - 3, total - 2, total - 1, total];
+  }
+  return [1, "...", current - 1, current, current + 1, "...", total];
+}
 
 export default function CampaignsPage() {
   const { t } = useI18n();
@@ -38,10 +64,24 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<CampaignListItem[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  // postId → current thumbnail / reel video URL, fetched live (Instagram URLs
-  // expire, so they are never stored on the campaign).
+
+  // Pagination state (backend driven)
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [pagination, setPagination] = useState<BackendPagination | null>(null);
+  const [serverTotals, setServerTotals] = useState<CampaignTotals | null>(null);
+  const [serverCounts, setServerCounts] = useState<Record<CampaignStatusFilter, number> | null>(null);
+
+  // Filter & search state
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [status, setStatus] = useState<CampaignStatusFilter>("all");
+  const [sort, setSort] = useState<CampaignSort>("recent");
+
+  // Media
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [videos, setVideos] = useState<Record<string, string>>({});
   const [playing, setPlaying] = useState<PlayingReel | null>(null);
@@ -49,25 +89,39 @@ export default function CampaignsPage() {
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<CampaignStatusFilter>("all");
-  const [sort, setSort] = useState<CampaignSort>("recent");
+  // Debounce search input by 300ms
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [search]);
 
-  // Fetch the list. The timer defers the first state update out of the effect
-  // body (and gives a rapid account switch a chance to supersede the request).
+  // Fetch paginated campaigns from backend
   useEffect(() => {
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       try {
+        setIsFetching(true);
         const params = new URLSearchParams();
+        params.set("page", String(page));
+        params.set("limit", String(limit));
         if (selectedAccountId !== "all") params.set("instagramAccountId", selectedAccountId);
-        const res = await fetch(`/api/automations${params.size ? `?${params}` : ""}`, {
+        if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+        if (status !== "all") params.set("status", status);
+        if (sort !== "recent") params.set("sort", sort);
+
+        const res = await fetch(`/api/automations?${params.toString()}`, {
           cache: "no-store",
         });
         const data = await res.json();
         if (cancelled) return;
         if (data.success) {
           setCampaigns(data.data);
+          if (data.pagination) setPagination(data.pagination);
+          if (data.summary) setServerTotals(data.summary);
+          if (data.counts) setServerCounts(data.counts);
           setLoadError(false);
         } else {
           setLoadError(true);
@@ -75,17 +129,19 @@ export default function CampaignsPage() {
       } catch {
         if (!cancelled) setLoadError(true);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setIsFetching(false);
+        }
       }
     }, 0);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [selectedAccountId, reloadKey]);
+  }, [page, limit, selectedAccountId, debouncedSearch, status, sort, reloadKey]);
 
-  // Fresh post thumbnails + reel video URLs for the accounts in view.
-  // Cache-first so they show instantly on a return visit.
+  // Fresh post thumbnails + reel video URLs for the accounts in view
   useEffect(() => {
     if (campaigns.length === 0) return;
     let cancelled = false;
@@ -96,7 +152,6 @@ export default function CampaignsPage() {
       cacheKey,
       15 * 60 * 1000
     );
-    // Hydrating state from cache is a legitimate effect use here.
     /* eslint-disable react-hooks/set-state-in-effect */
     if (cached.data) {
       setThumbnails(cached.data.thumbs);
@@ -142,11 +197,20 @@ export default function CampaignsPage() {
   }, [campaigns]);
 
   function handleAccountChange(accountId: string) {
-    setLoading(true);
     setSelectedAccountId(accountId);
+    setPage(1);
   }
 
-  // Optimistic: flip immediately, roll back if the request fails.
+  function handleStatusChange(nextStatus: CampaignStatusFilter) {
+    setStatus(nextStatus);
+    setPage(1);
+  }
+
+  function handleSortChange(nextSort: CampaignSort) {
+    setSort(nextSort);
+    setPage(1);
+  }
+
   async function toggleActive(campaign: CampaignListItem) {
     const next = !campaign.isActive;
     setActionError(null);
@@ -163,6 +227,7 @@ export default function CampaignsPage() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
+      setReloadKey((n) => n + 1);
     } catch {
       rollback();
       setActionError(t("Could not update the campaign. Try again."));
@@ -177,7 +242,7 @@ export default function CampaignsPage() {
       const res = await fetch(`/api/automations?id=${deleteTarget.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
-      setCampaigns((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      setReloadKey((n) => n + 1);
     } catch {
       setActionError(t("Could not delete the campaign. Try again."));
     } finally {
@@ -186,9 +251,6 @@ export default function CampaignsPage() {
     }
   }
 
-  // The copy is made server-side from the stored campaign, so settings this
-  // list never loads (the DM trigger, the follow-up, the link button label)
-  // still come along.
   async function duplicate(campaign: CampaignListItem) {
     setActionError(null);
     try {
@@ -204,23 +266,30 @@ export default function CampaignsPage() {
   const closePlayer = useCallback(() => setPlaying(null), []);
   const closeDelete = useCallback(() => setDeleteTarget(null), []);
 
-  const totals = useMemo(() => aggregateCampaigns(campaigns), [campaigns]);
-  const counts = useMemo(() => statusCounts(campaigns), [campaigns]);
-  const visible = useMemo(
-    () => sortCampaigns(filterCampaigns(campaigns, { query: search, status }), sort),
-    [campaigns, search, status, sort]
-  );
+  const localTotals = useMemo(() => aggregateCampaigns(campaigns), [campaigns]);
+  const localCounts = useMemo(() => statusCounts(campaigns), [campaigns]);
+
+  const totalCampaigns = serverTotals?.total ?? localTotals.total;
+  const activeCount = serverTotals?.active ?? localTotals.active;
+  const pausedCount = serverTotals?.paused ?? localTotals.paused;
+  const sentCount = serverTotals?.sent ?? localTotals.sent;
+  const clickCount = serverTotals?.clicks ?? localTotals.clicks;
+  const ctrValue = serverTotals?.ctr ?? localTotals.ctr;
+
+  const countAll = serverCounts?.all ?? localCounts.all;
+  const countActive = serverCounts?.active ?? localCounts.active;
+  const countPaused = serverCounts?.paused ?? localCounts.paused;
 
   const kpis: KpiItem[] = [
     {
       id: "active",
       label: t("Active campaigns"),
-      value: `${totals.active}/${totals.total}`,
-      caption: totals.paused > 0 ? t("{count} paused", { count: totals.paused }) : undefined,
+      value: `${activeCount}/${totalCampaigns}`,
+      caption: pausedCount > 0 ? t("{count} paused", { count: pausedCount }) : undefined,
     },
-    { id: "sends", label: t("Sends"), value: formatCompact(totals.sent) },
-    { id: "clicks", label: t("Clicks"), value: formatCompact(totals.clicks) },
-    { id: "ctr", label: t("Average CTR"), value: formatPercent(totals.ctr) },
+    { id: "sends", label: t("Sends"), value: formatCompact(sentCount) },
+    { id: "clicks", label: t("Clicks"), value: formatCompact(clickCount) },
+    { id: "ctr", label: t("Average CTR"), value: formatPercent(ctrValue) },
   ];
 
   const templateTitle = (slug: string, fallback: string) => {
@@ -242,13 +311,16 @@ export default function CampaignsPage() {
     }
   };
 
+  const totalFiltered = pagination?.total ?? campaigns.length;
+  const isFiltered = debouncedSearch.trim().length > 0 || status !== "all";
+
   const subtitle =
-    campaigns.length === 0
+    totalCampaigns === 0
       ? t("Turn comments into conversations.")
-      : visible.length !== campaigns.length
-        ? t("{count} of {total} campaigns", { count: visible.length, total: campaigns.length })
-        : t(campaigns.length === 1 ? "{count} campaign" : "{count} campaigns", {
-            count: campaigns.length,
+      : isFiltered && totalFiltered !== totalCampaigns
+        ? t("{count} of {total} campaigns", { count: totalFiltered, total: totalCampaigns })
+        : t(totalCampaigns === 1 ? "{count} campaign" : "{count} campaigns", {
+            count: totalCampaigns,
           });
 
   return (
@@ -296,11 +368,11 @@ export default function CampaignsPage() {
         <div className="space-y-4" aria-busy="true">
           <KpiStrip items={kpis} loading />
           {[0, 1, 2].map((i) => (
-            <div key={i} className="panel h-44 animate-pulse" />
+            <div key={i} className="panel h-44 animate-pulse rounded-2xl" />
           ))}
         </div>
-      ) : loadError && campaigns.length === 0 ? (
-        <div className="panel p-10 text-center">
+      ) : loadError && totalCampaigns === 0 ? (
+        <div className="panel p-10 text-center rounded-2xl">
           <p className="text-sm text-muted">{t("Could not load your campaigns.")}</p>
           <button
             type="button"
@@ -313,9 +385,9 @@ export default function CampaignsPage() {
             {t("Try again")}
           </button>
         </div>
-      ) : campaigns.length === 0 ? (
+      ) : totalCampaigns === 0 && !isFiltered ? (
         <div className="space-y-6">
-          <div className="panel px-6 py-12 text-center sm:py-14">
+          <div className="panel px-6 py-12 text-center sm:py-14 rounded-2xl">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-accent-soft text-accent">
               <IconSparkle className="h-6 w-6" />
             </span>
@@ -346,7 +418,7 @@ export default function CampaignsPage() {
                 <Link
                   key={template.slug}
                   href={`/campaigns/new?template=${template.slug}`}
-                  className="panel group p-4 transition-colors hover:border-accent-muted hover:bg-accent-soft/40"
+                  className="panel group p-4 rounded-xl transition-colors hover:border-accent-muted hover:bg-accent-soft/40"
                 >
                   <p className="font-medium text-foreground">
                     {templateTitle(template.slug, template.title)}
@@ -389,16 +461,16 @@ export default function CampaignsPage() {
               <Segmented<CampaignStatusFilter>
                 ariaLabel={t("Filter by status")}
                 value={status}
-                onChange={setStatus}
+                onChange={handleStatusChange}
                 options={[
-                  { value: "all", label: `${t("All")} · ${counts.all}` },
-                  { value: "active", label: `${t("Active")} · ${counts.active}` },
-                  { value: "paused", label: `${t("Paused")} · ${counts.paused}` },
+                  { value: "all", label: `${t("All")} · ${countAll}` },
+                  { value: "active", label: `${t("Active")} · ${countActive}` },
+                  { value: "paused", label: `${t("Paused")} · ${countPaused}` },
                 ]}
               />
               <select
                 value={sort}
-                onChange={(e) => setSort(e.target.value as CampaignSort)}
+                onChange={(e) => handleSortChange(e.target.value as CampaignSort)}
                 aria-label={t("Sort campaigns")}
                 className={`${inputClass()} w-auto`}
               >
@@ -410,13 +482,13 @@ export default function CampaignsPage() {
             </div>
           </div>
 
-          {visible.length === 0 ? (
-            <div className="panel p-10 text-center text-sm text-muted">
+          {campaigns.length === 0 ? (
+            <div className="panel p-10 text-center text-sm text-muted rounded-2xl">
               {t("No campaigns match your search.")}
             </div>
           ) : (
-            <div className="space-y-3">
-              {visible.map((campaign) => (
+            <div className={`space-y-4 transition-opacity duration-150 ${isFetching ? "opacity-60 pointer-events-none" : "opacity-100"}`}>
+              {campaigns.map((campaign) => (
                 <CampaignCard
                   key={campaign.id}
                   campaign={campaign}
@@ -428,6 +500,88 @@ export default function CampaignsPage() {
                   onDelete={setDeleteTarget}
                 />
               ))}
+            </div>
+          )}
+
+          {/* Server-driven Pagination */}
+          {pagination && pagination.total > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-3 pb-2 border-t border-border/80">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <p className="text-xs text-muted">
+                  {t("Showing {start}–{end} of {total}", {
+                    start: (pagination.page - 1) * pagination.limit + 1,
+                    end: Math.min(pagination.page * pagination.limit, pagination.total),
+                    total: pagination.total,
+                  })}
+                </p>
+                <span className="text-subtle text-xs">·</span>
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    aria-label={t("Items per page")}
+                    className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-border-hover focus:border-accent focus:outline-none"
+                  >
+                    <option value={5}>5 {t("per page")}</option>
+                    <option value={10}>10 {t("per page")}</option>
+                    <option value={20}>20 {t("per page")}</option>
+                    <option value={50}>50 {t("per page")}</option>
+                  </select>
+                </div>
+              </div>
+
+              {pagination.totalPages > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover hover:border-border-hover disabled:opacity-30 disabled:pointer-events-none"
+                    aria-label={t("Previous")}
+                  >
+                    <IconChevronLeft className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{t("Previous")}</span>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {getPageNumbers(page, pagination.totalPages).map((p, idx) =>
+                      p === "..." ? (
+                        <span key={`ellipsis-${idx}`} className="px-1 text-xs text-subtle">
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setPage(p)}
+                          className={`h-7 w-7 rounded-lg text-xs font-medium transition-colors ${
+                            p === page
+                              ? "bg-accent text-white shadow-xs font-semibold"
+                              : "text-muted hover:bg-surface-hover hover:text-foreground"
+                          }`}
+                          aria-current={p === page ? "page" : undefined}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={page >= pagination.totalPages}
+                    onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-hover hover:border-border-hover disabled:opacity-30 disabled:pointer-events-none"
+                    aria-label={t("Next")}
+                  >
+                    <span className="hidden sm:inline">{t("Next")}</span>
+                    <IconChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>

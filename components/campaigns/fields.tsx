@@ -327,7 +327,7 @@ export function OptionCards<T extends string>({
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(option.value)}
-            className={`flex items-start gap-3 rounded-xl border p-3.5 text-left transition-colors ${
+            className={`flex items-center gap-3.5 rounded-xl border p-3.5 text-left transition-colors ${
               selected
                 ? "border-accent bg-accent-soft"
                 : "border-border hover:border-border-hover hover:bg-surface-hover"
@@ -335,7 +335,7 @@ export function OptionCards<T extends string>({
           >
             {option.icon && (
               <span
-                className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
                   selected ? "bg-accent text-white" : "bg-surface-hover text-muted"
                 }`}
               >
@@ -350,7 +350,7 @@ export function OptionCards<T extends string>({
             </span>
             <span
               aria-hidden="true"
-              className={`mt-1 grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
+              className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border ${
                 selected ? "border-accent" : "border-border-hover"
               }`}
             >

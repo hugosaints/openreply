@@ -120,6 +120,7 @@ export function SetupStep({ draft, patch, errors, accounts, usedPosts }: SetupSt
           label={t("When someone comments on")}
           value={draft.triggerScope}
           onChange={(triggerScope) => patch({ triggerScope })}
+          columns="grid-cols-1"
           options={[
             {
               value: "specific",
@@ -210,7 +211,7 @@ export function TriggerStep({ draft, patch, errors }: StepProps) {
           label={t("And this comment has")}
           value={draft.matchMode}
           onChange={(matchMode) => patch({ matchMode })}
-          columns="sm:grid-cols-2"
+          columns="grid-cols-1"
           options={[
             {
               value: "specific",
