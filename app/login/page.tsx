@@ -30,9 +30,10 @@ export default async function LoginPage({
     checkEmail?: string;
     callbackUrl?: string;
     template?: string;
+    error?: string;
   }>;
 }) {
-  const { t } = await getI18n();
+  const { t, locale } = await getI18n();
   if (await isPublicDemoHost()) {
     return (
       <AuthShell>
@@ -58,11 +59,36 @@ export default async function LoginPage({
 
   const params = await searchParams;
   const checkEmail = params.checkEmail === "1";
+  const authError = params.error;
   const selectedTemplate = getCampaignTemplate(params.template);
   const templateCallbackUrl = selectedTemplate
     ? `/campaigns/new?template=${selectedTemplate.slug}`
     : null;
   const callbackUrl = params.callbackUrl ?? templateCallbackUrl ?? "/dashboard";
+
+  let errorMessage: string | null = null;
+  if (authError === "Verification") {
+    errorMessage =
+      locale === "pt-BR"
+        ? "O link de login expirou ou já foi usado. Solicite um novo link."
+        : locale === "zh-TW"
+          ? "登入連結已過期或已使用過，請重新索取。"
+          : "The sign-in link is no longer valid or has expired. Please request a new one.";
+  } else if (authError === "AccessDenied") {
+    errorMessage =
+      locale === "pt-BR"
+        ? "Acesso negado. Verifique suas permissões ou entre em contato com o suporte."
+        : locale === "zh-TW"
+          ? "存取遭拒，請確認你的權限或聯絡支援團隊。"
+          : "Access denied. Please check your credentials or contact support.";
+  } else if (authError) {
+    errorMessage =
+      locale === "pt-BR"
+        ? "Não foi possível entrar. Tente novamente."
+        : locale === "zh-TW"
+          ? "無法登入，請重試。"
+          : "Unable to sign in. Please try again.";
+  }
 
   // Already signed in (a real session, not just a leftover cookie): skip the form.
   const session = await auth();
@@ -105,6 +131,12 @@ export default async function LoginPage({
                   : t("Sign in by email, then connect your Instagram professional account.")}
               </p>
             </div>
+
+            {errorMessage && (
+              <div className="mt-4 rounded-xl border border-error/20 bg-error-soft p-3 text-center text-sm text-error">
+                {errorMessage}
+              </div>
+            )}
 
             {selectedTemplate && (
               <div className="mt-6 flex items-start gap-3 rounded-xl border border-accent-muted/60 bg-accent-soft p-3.5">

@@ -1,12 +1,10 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Nodemailer from "next-auth/providers/nodemailer";
 import Resend from "next-auth/providers/resend";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db/client";
 import { ensureWorkspaceForUser, getPrimaryWorkspace } from "@/lib/workspace";
 import { isEmailAllowedToSignIn } from "@/lib/env";
-
-type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
+import { createCustomPrismaAdapter, type AdapterPrismaClient } from "@/lib/auth-adapter";
 
 const emailFrom = process.env.EMAIL_FROM ?? "OpenReply <login@example.com>";
 // Setting EMAIL_SERVER switches magic links to your own SMTP server, for
@@ -21,7 +19,7 @@ const smtpServer = process.env.EMAIL_SERVER;
 export const EMAIL_PROVIDER_ID = smtpServer ? "nodemailer" : "resend";
 
 export const authConfig = {
-  adapter: PrismaAdapter(prisma as unknown as AdapterPrismaClient),
+  adapter: createCustomPrismaAdapter(prisma as unknown as AdapterPrismaClient),
   providers: [
     smtpServer
       ? Nodemailer({ server: smtpServer, from: emailFrom })
@@ -53,12 +51,13 @@ export const authConfig = {
   pages: {
     signIn: "/login",
     verifyRequest: "/verify-request",
+    error: "/login",
   },
   session: {
     strategy: "database",
   },
   trustHost: true,
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
 } satisfies NextAuthConfig;
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
