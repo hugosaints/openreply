@@ -310,6 +310,16 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     orderBy: { createdAt: "asc" },
   });
 
+  // Prioritize post-specific campaigns over generic matchAnyPost campaigns.
+  // Both sort by createdAt asc within their group.
+  automations.sort((a, b) => {
+    const aIsSpecific = !a.matchAnyPost && Boolean(a.postId);
+    const bIsSpecific = !b.matchAnyPost && Boolean(b.postId);
+    if (aIsSpecific && !bIsSpecific) return -1;
+    if (!aIsSpecific && bIsSpecific) return 1;
+    return a.createdAt.getTime() - b.createdAt.getTime();
+  });
+
   for (const automation of automations) {
     // "Any word" campaigns fire on every comment; otherwise require a keyword hit.
     const matchResult = automation.matchAnyWord
@@ -435,13 +445,44 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // Public reply leg — decoupled from the DM and posted first so a DM failure
     // (e.g. a non-follower whose messaging is restricted) never suppresses it.
     // Idempotent across retries via publicReplySentAt.
+    //
+    // Deduplicated across campaigns: only ONE public reply should ever be sent
+    // per comment on Instagram. If another campaign already sent or claimed it,
+    // skip sending a second public reply so followers never receive duplicate
+    // response comments.
     const replyPool =
       automation.publicReplyMessages.length > 0
         ? automation.publicReplyMessages
         : automation.publicReplyMessage
           ? [automation.publicReplyMessage]
           : [];
-    if (
+
+    const publicReplyUsedBy = await prisma.dmLog.findFirst({
+      where: {
+        commentId,
+        automationId: { not: automation.id },
+        OR: [
+          { publicReplySentAt: { not: null } },
+          { publicReplyDeliveryUnconfirmed: true },
+        ],
+      },
+      select: { automation: { select: { name: true } } },
+    });
+
+    if (publicReplyUsedBy) {
+      if (automation.publicReplyEnabled && !existingLog?.publicReplySentAt) {
+        await prisma.dmLog
+          .update({
+            where: {
+              automationId_commentId: { automationId: automation.id, commentId },
+            },
+            data: {
+              publicReplyError: `Another campaign (${publicReplyUsedBy.automation?.name ?? "unknown"}) already replied publicly to this comment`,
+            },
+          })
+          .catch(() => {});
+      }
+    } else if (
       automation.publicReplyEnabled &&
       replyPool.length > 0 &&
       !existingLog?.publicReplySentAt &&
@@ -495,8 +536,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     // campaigns, or an any-post campaign overlapping a post-specific one), only
     // the first can deliver; the rest would fail with "The comment is invalid
     // for a private reply". Skip them explicitly instead of burning an API call
-    // and logging a failure the user can do nothing about. The public reply
-    // above still goes out per campaign — only the DM leg is deduped.
+    // and logging a failure the user can do nothing about.
     const privateReplyUsedBy = await prisma.dmLog.findFirst({
       where: {
         commentId,

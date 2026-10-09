@@ -135,4 +135,30 @@ describe("comment polling does not recreate unsafe sends", () => {
         expect(data.commentId).toBe("new");
     },
   );
+
+  it("skips comments that have already been handled by another campaign on the account", async () => {
+    mockPrisma.dmLog.findMany.mockResolvedValue([
+      {
+        commentId: "new",
+        automationId: "another_campaign",
+        status: "SENT",
+        publicReplySentAt: new Date(),
+        publicReplyDeliveryUnconfirmed: false,
+        dmDeliveryUnconfirmed: false,
+        attempts: 1,
+      },
+      {
+        commentId: "old",
+        automationId: "another_campaign",
+        status: "SENT",
+        publicReplySentAt: new Date(),
+        publicReplyDeliveryUnconfirmed: false,
+        dmDeliveryUnconfirmed: false,
+        attempts: 1,
+      },
+    ]);
+    await reconcileComments();
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
 });
+

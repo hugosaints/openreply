@@ -9,6 +9,7 @@ const {
   mockSendDirectMessageWithButton,
   mockSendDirectMessage,
   mockSendDirectMessageWithLinkButton,
+  mockSendCommentReply,
   mockDecryptToken,
   mockMatchKeywords,
   mockReserveDMSlot,
@@ -46,6 +47,7 @@ const {
   mockSendDirectMessageWithButton: vi.fn(),
   mockSendDirectMessage: vi.fn(),
   mockSendDirectMessageWithLinkButton: vi.fn(),
+  mockSendCommentReply: vi.fn(),
   mockDecryptToken: vi.fn(),
   mockMatchKeywords: vi.fn(),
   mockReserveDMSlot: vi.fn(),
@@ -67,7 +69,7 @@ vi.mock("@/lib/meta/client", () => ({
   sendDirectMessageWithButton: mockSendDirectMessageWithButton,
   sendDirectMessage: mockSendDirectMessage,
   sendDirectMessageWithLinkButton: mockSendDirectMessageWithLinkButton,
-  sendCommentReply: vi.fn(),
+  sendCommentReply: mockSendCommentReply,
   MetaApiError: class MetaApiError extends Error {
     code: number;
     constructor(
@@ -223,18 +225,25 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockPrisma.postbackDelivery.create.mockReset().mockResolvedValue({});
   mockPrisma.postbackDelivery.delete.mockReset().mockResolvedValue({});
+  mockSendCommentReply.mockReset().mockResolvedValue({ id: "reply_123" });
 
   mockPrisma.automation.findMany.mockResolvedValue([mockAutomation]);
   mockPrisma.automation.findFirst.mockResolvedValue(null);
   mockPrisma.dmLog.findUnique.mockResolvedValue(null);
   mockPrisma.dmLog.create.mockResolvedValue({});
-  // Two different lookups share findFirst: the cross-campaign private-reply
-  // check (keyed on status SENT) and the postback's name lookup. Only the
-  // latter should resolve by default, or every comment would look like a
-  // duplicate of an already-answered one.
+  // Lookups that share findFirst: the cross-campaign checks (keyed on
+  // automationId { not: ... } or status SENT) and the name lookups.
+  // Only the name lookups should resolve by default, or every comment would
+  // look like a duplicate of an already-answered one.
   mockPrisma.dmLog.findFirst.mockImplementation(
-    async (args: { where?: { status?: string } } = {}) =>
-      args.where?.status === "SENT" ? null : { commenterName: "commenter_user" }
+    async (args: { where?: { status?: string; automationId?: unknown } } = {}) => {
+      const isCrossCampaign =
+        args.where?.status === "SENT" ||
+        (typeof args.where?.automationId === "object" &&
+          args.where?.automationId !== null &&
+          "not" in (args.where.automationId as Record<string, unknown>));
+      return isCrossCampaign ? null : { commenterName: "commenter_user" };
+    }
   );
   mockPrisma.dmLog.upsert.mockResolvedValue({});
   mockPrisma.dmLog.update.mockReset().mockResolvedValue({});
@@ -979,6 +988,92 @@ describe("DM Worker — one private reply per comment", () => {
     expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: "SENT" }),
+      })
+    );
+  });
+
+  it("should send exactly one public reply and one DM when multiple campaigns match the same comment", async () => {
+    const specificCampaign = {
+      ...mockAutomation,
+      id: "auto_specific",
+      name: "Specific Post Campaign",
+      postId: "media_101",
+      matchAnyPost: false,
+      publicReplyEnabled: true,
+      publicReplyMessage: "Specific reply!",
+      createdAt: new Date("2026-05-02T00:00:00.000Z"),
+    };
+    const genericCampaign = {
+      ...mockAutomation,
+      id: "auto_generic",
+      name: "Generic Any Post Campaign",
+      postId: null,
+      matchAnyPost: true,
+      publicReplyEnabled: true,
+      publicReplyMessage: "Generic reply!",
+      createdAt: new Date("2026-05-01T00:00:00.000Z"),
+    };
+
+    mockPrisma.automation.findMany.mockResolvedValue([genericCampaign, specificCampaign]);
+
+    const logs = new Map<string, Record<string, unknown>>();
+    mockPrisma.dmLog.findUnique.mockImplementation(async ({ where }: { where: { automationId_commentId: { automationId: string; commentId: string } } }) => {
+      const key = `${where.automationId_commentId.automationId}:${where.automationId_commentId.commentId}`;
+      return logs.get(key) ?? null;
+    });
+    mockPrisma.dmLog.findFirst.mockImplementation(async (args: { where?: { status?: string; OR?: unknown; automationId?: { not?: string } } } = {}) => {
+      const notId = args.where?.automationId?.not;
+      if (args.where?.status === "SENT") {
+        for (const [key, val] of logs.entries()) {
+          if (val.status === "SENT" && (!notId || !key.startsWith(notId))) {
+            return { automation: { name: "Specific Post Campaign" } };
+          }
+        }
+        return null;
+      }
+      if (args.where?.OR) {
+        for (const [key, val] of logs.entries()) {
+          if ((val.publicReplySentAt || val.publicReplyDeliveryUnconfirmed) && (!notId || !key.startsWith(notId))) {
+            return { automation: { name: "Specific Post Campaign" } };
+          }
+        }
+        return null;
+      }
+      return { commenterName: "commenter_user" };
+    });
+    mockPrisma.dmLog.update.mockImplementation(async ({ where, data }: { where: { automationId_commentId: { automationId: string; commentId: string } }; data: Record<string, unknown> }) => {
+      const key = `${where.automationId_commentId.automationId}:${where.automationId_commentId.commentId}`;
+      const current = logs.get(key) ?? {};
+      logs.set(key, { ...current, ...data });
+      return { ...current, ...data };
+    });
+
+    const processor = getProcessor();
+    await processor(createMockJob());
+
+    // Exactly ONE public reply sent, and from the prioritized specific campaign!
+    expect(mockSendCommentReply).toHaveBeenCalledTimes(1);
+    expect(mockSendCommentReply).toHaveBeenCalledWith(
+      "decrypted_token",
+      "comment_555",
+      "Specific reply!"
+    );
+
+    // Exactly ONE DM sent, from the specific campaign!
+    expect(mockSendPrivateReply).toHaveBeenCalledTimes(1);
+
+    // Generic campaign had its DM skipped via dedup and its public reply skipped
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          automationId_commentId: {
+            automationId: "auto_generic",
+            commentId: "comment_555",
+          },
+        },
+        data: expect.objectContaining({
+          status: "SKIPPED_DEDUP",
+        }),
       })
     );
   });

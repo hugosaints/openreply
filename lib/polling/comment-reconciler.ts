@@ -237,25 +237,56 @@ async function sweepCampaign({
     // enough — the reply still has to land); otherwise a SENT DM is enough. This
     // is what lets a comment whose DM sent but whose public reply failed come
     // back and retry the reply.
+    //
+    // Cross-campaign safety: also inspect other campaigns on this account. If
+    // another campaign already handled the comment (or is in flight), this sweep
+    // must skip it so duplicate replies are not enqueued.
     const logs = await prisma.dmLog.findMany({
       where: {
-        automationId: automation.id,
+        OR: [
+          { automationId: automation.id },
+          { instagramAccountId: account.id },
+        ],
         commentId: { in: needsAction.map((c) => c.id) },
       },
       select: {
-        commentId: true, status: true, attempts: true, errorMessage: true,
-        dmDeliveryUnconfirmed: true, publicReplySentAt: true,
+        commentId: true,
+        status: true,
+        attempts: true,
+        errorMessage: true,
+        dmDeliveryUnconfirmed: true,
+        publicReplySentAt: true,
         publicReplyDeliveryUnconfirmed: true,
       },
     });
-    const handledSet = new Set(logs.filter((log) => {
-      const dmStopped = log.status === "SENT" || log.status === "SKIPPED_PLAN_LIMIT" ||
-        log.dmDeliveryUnconfirmed || log.attempts >= MAX_COMMENT_SEND_ATTEMPTS ||
-        (log.status === "FAILED" && hasLegacyUnconfirmedDelivery(log.errorMessage));
-      const replyStopped = !automation.publicReplyEnabled ||
-        log.publicReplySentAt || log.publicReplyDeliveryUnconfirmed;
-      return dmStopped && replyStopped;
-    }).map((log) => log.commentId));
+
+    const logsByCommentId = new Map<string, typeof logs>();
+    for (const log of logs) {
+      const list = logsByCommentId.get(log.commentId) ?? [];
+      list.push(log);
+      logsByCommentId.set(log.commentId, list);
+    }
+
+    const handledSet = new Set<string>();
+    for (const [cId, commentLogs] of logsByCommentId.entries()) {
+      const dmStopped = commentLogs.some(
+        (log) =>
+          log.status === "SENT" ||
+          log.status === "SKIPPED_PLAN_LIMIT" ||
+          log.dmDeliveryUnconfirmed ||
+          log.attempts >= MAX_COMMENT_SEND_ATTEMPTS ||
+          (log.status === "FAILED" && hasLegacyUnconfirmedDelivery(log.errorMessage))
+      );
+      const replyStopped =
+        !automation.publicReplyEnabled ||
+        commentLogs.some(
+          (log) => log.publicReplySentAt || log.publicReplyDeliveryUnconfirmed
+        );
+
+      if (dmStopped && replyStopped) {
+        handledSet.add(cId);
+      }
+    }
 
     // Oldest first, so whoever commented earliest gets answered first, capped.
     const fresh = needsAction

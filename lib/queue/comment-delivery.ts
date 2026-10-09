@@ -9,6 +9,41 @@ export async function claimCommentDelivery(
   commentId: string,
   leg: "dm" | "public",
 ): Promise<boolean> {
+  // Cross-campaign safety: if another campaign for this comment has already
+  // sent or claimed the delivery, reject this claim so the commenter never
+  // receives duplicate public replies or DMs.
+  if (leg === "public") {
+    const otherPublicClaim = await prisma.dmLog.findFirst({
+      where: {
+        commentId,
+        automationId: { not: automationId },
+        OR: [
+          { publicReplySentAt: { not: null } },
+          { publicReplyDeliveryUnconfirmed: true },
+        ],
+      },
+      select: { id: true },
+    });
+    if (otherPublicClaim) {
+      return false;
+    }
+  } else if (leg === "dm") {
+    const otherDmClaim = await prisma.dmLog.findFirst({
+      where: {
+        commentId,
+        automationId: { not: automationId },
+        OR: [
+          { status: "SENT" },
+          { dmDeliveryUnconfirmed: true },
+        ],
+      },
+      select: { id: true },
+    });
+    if (otherDmClaim) {
+      return false;
+    }
+  }
+
   const result = await prisma.dmLog.updateMany({
     where: {
       automationId,
@@ -33,3 +68,4 @@ export async function claimCommentDelivery(
   });
   return result.count === 1;
 }
+
