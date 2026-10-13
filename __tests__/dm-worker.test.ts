@@ -236,7 +236,13 @@ beforeEach(() => {
   // Only the name lookups should resolve by default, or every comment would
   // look like a duplicate of an already-answered one.
   mockPrisma.dmLog.findFirst.mockImplementation(
-    async (args: { where?: { status?: string; automationId?: unknown } } = {}) => {
+    async (
+      args: {
+        where?: { status?: string; automationId?: unknown; publicReplyCommentId?: string };
+      } = {}
+    ) => {
+      // The "is this comment one of our own public replies?" lookup.
+      if (args.where?.publicReplyCommentId) return null;
       const isCrossCampaign =
         args.where?.status === "SENT" ||
         (typeof args.where?.automationId === "object" &&
@@ -326,6 +332,63 @@ describe("DM Worker — comments left on an ad", () => {
       })
     );
     expect(mockSendPrivateReply).toHaveBeenCalled();
+  });
+});
+
+describe("DM Worker — the account's own comments (self-reply loop)", () => {
+  const ownAccountAutomation = {
+    ...mockAutomation,
+    publicReplyEnabled: true,
+    publicReplyMessages: ["Sent you a DM!"],
+    instagramAccount: {
+      ...mockAutomation.instagramAccount,
+      username: "brand_account",
+      instagramUserIds: ["17841450754756865"],
+    },
+  };
+
+  it.each([
+    ["an alternate id", { commenterId: "17841450754756865", commenterName: "whatever" }],
+    ["its username, before the id is known", { commenterId: "unknown_id", commenterName: "Brand_Account" }],
+    ["its stored instagramId", { commenterId: "ig_456", commenterName: null }],
+  ])("ignores a comment written by the account, matched by %s", async (_label, author) => {
+    mockPrisma.automation.findMany.mockResolvedValue([ownAccountAutomation]);
+    const processor = getProcessor();
+
+    await processor(createMockJob({ ...mockJobData, ...author }));
+
+    expect(mockPrisma.dmLog.upsert).not.toHaveBeenCalled();
+    expect(mockSendCommentReply).not.toHaveBeenCalled();
+    expect(mockSendPrivateReply).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
+
+  it("ignores a comment that is one of our own public replies", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([ownAccountAutomation]);
+    mockPrisma.dmLog.findFirst.mockImplementation(
+      async (args: { where?: { publicReplyCommentId?: string } } = {}) =>
+        args.where?.publicReplyCommentId === "comment_555" ? { id: "log_1" } : null
+    );
+    const processor = getProcessor();
+
+    await processor(createMockJob());
+
+    expect(mockPrisma.dmLog.upsert).not.toHaveBeenCalled();
+    expect(mockSendCommentReply).not.toHaveBeenCalled();
+  });
+
+  it("records the id of the public reply it posts", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([ownAccountAutomation]);
+    const processor = getProcessor();
+
+    await processor(createMockJob());
+
+    expect(mockSendCommentReply).toHaveBeenCalled();
+    expect(mockPrisma.dmLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ publicReplyCommentId: "reply_123" }),
+      })
+    );
   });
 });
 
@@ -904,10 +967,12 @@ describe("DM Worker — Full Pipeline", () => {
 describe("DM Worker — one private reply per comment", () => {
   it("should skip a campaign when another already used the comment's private reply", async () => {
     mockPrisma.dmLog.findFirst.mockImplementation(
-      async (args: { where?: { status?: string } } = {}) =>
-        args.where?.status === "SENT"
-          ? { automation: { name: "openreply 1" } }
-          : { commenterName: "commenter_user" }
+      async (args: { where?: { status?: string; publicReplyCommentId?: string } } = {}) =>
+        args.where?.publicReplyCommentId
+          ? null
+          : args.where?.status === "SENT"
+            ? { automation: { name: "openreply 1" } }
+            : { commenterName: "commenter_user" }
     );
 
     const processor = getProcessor();
@@ -1021,7 +1086,8 @@ describe("DM Worker — one private reply per comment", () => {
       const key = `${where.automationId_commentId.automationId}:${where.automationId_commentId.commentId}`;
       return logs.get(key) ?? null;
     });
-    mockPrisma.dmLog.findFirst.mockImplementation(async (args: { where?: { status?: string; OR?: unknown; automationId?: { not?: string } } } = {}) => {
+    mockPrisma.dmLog.findFirst.mockImplementation(async (args: { where?: { status?: string; OR?: unknown; automationId?: { not?: string }; publicReplyCommentId?: string } } = {}) => {
+      if (args.where?.publicReplyCommentId) return null;
       const notId = args.where?.automationId?.not;
       if (args.where?.status === "SENT") {
         for (const [key, val] of logs.entries()) {

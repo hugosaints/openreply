@@ -39,6 +39,7 @@ import {
   type InstagramContext,
 } from "@/lib/instagram/provider";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
+import { isOwnAccount } from "@/lib/instagram/self-identity";
 import { reserveDMSlot, releaseDMSlot } from "@/lib/utils/rate-limiter";
 import {
   releaseWorkspaceDMReservation,
@@ -320,6 +321,26 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
 
+  if (automations.length === 0) return;
+
+  // Last line of defence against the self-reply loop, whatever the source
+  // (webhook from either provider, or the polling sweep): a comment written by
+  // the connected account — most often the public reply this worker just
+  // posted — must never be answered, DM'd, logged, or counted against usage.
+  if (
+    isOwnAccount(automations[0].instagramAccount, {
+      id: commenterId,
+      username: commenterName,
+    })
+  ) {
+    return;
+  }
+  const isOurPublicReply = await prisma.dmLog.findFirst({
+    where: { publicReplyCommentId: commentId },
+    select: { id: true },
+  });
+  if (isOurPublicReply) return;
+
   for (const automation of automations) {
     // "Any word" campaigns fire on every comment; otherwise require a keyword hit.
     const matchResult = automation.matchAnyWord
@@ -496,7 +517,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commenterName,
           trackedLinks: automation.trackedLinks,
         });
-        await sendCommentReply({
+        const reply = await sendCommentReply({
           context: accessToken,
           commentId: commentId,
           message: publicReply,
@@ -506,7 +527,12 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           where: {
             automationId_commentId: { automationId: automation.id, commentId },
           },
-          data: { publicReplySentAt: new Date(), publicReplyError: null, publicReplyDeliveryUnconfirmed: false },
+          data: {
+            publicReplySentAt: new Date(),
+            publicReplyError: null,
+            publicReplyDeliveryUnconfirmed: false,
+            publicReplyCommentId: reply?.id ?? null,
+          },
         });
       } catch (error) {
         console.error(

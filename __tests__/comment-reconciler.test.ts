@@ -160,5 +160,38 @@ describe("comment polling does not recreate unsafe sends", () => {
     await reconcileComments();
     expect(queueAdd).not.toHaveBeenCalled();
   });
+
+  it("recognises the account's own comments and replies by alternate id and username", async () => {
+    const campaign = (await mockPrisma.automation.findMany())[0];
+    mockPrisma.automation.findMany.mockResolvedValue([
+      {
+        ...campaign,
+        instagramAccount: {
+          ...campaign.instagramAccount,
+          username: "brand",
+          instagramUserIds: ["owner-pro-id"],
+        },
+      },
+    ]);
+    mockPrisma.dmLog.findMany.mockResolvedValue([]);
+    readComments.mockResolvedValue([
+      // The account's own public reply, under its professional-account id.
+      { id: "own-by-id", text: "AI", from: { id: "owner-pro-id" }, timestamp: new Date().toISOString() },
+      // Same, with an id not learned yet: only the username identifies it.
+      { id: "own-by-name", text: "AI", from: { id: "unknown", username: "Brand" }, timestamp: new Date().toISOString() },
+      // A reader the account already replied to under its alternate id.
+      {
+        id: "answered",
+        text: "AI",
+        from: { id: "reader" },
+        timestamp: new Date().toISOString(),
+        replies: { data: [{ id: "r", from: { id: "owner-pro-id" } }] },
+      },
+      { id: "fresh", text: "AI", from: { id: "another-reader" }, timestamp: new Date().toISOString() },
+    ]);
+    await reconcileComments();
+    expect(queueAdd).toHaveBeenCalledTimes(1);
+    expect(queueAdd.mock.calls[0][1].commentId).toBe("fresh");
+  });
 });
 

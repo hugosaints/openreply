@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
+import { isOwnAccount, unknownOwnId } from '@/lib/instagram/self-identity';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
 type InstagramPayload = Parameters<typeof parseCommentEvents>[0];
@@ -12,7 +13,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
   if (incoming.object !== 'instagram' || !Array.isArray(incoming.entry)) return;
   const accounts = await prisma.instagramAccount.findMany({
     where: { instagramId: { in: incoming.entry.map(e => e.id) }, provider, ...(workspaceId ? { workspaceId } : {}) },
-    select: { id: true, instagramId: true, workspaceId: true },
+    select: { id: true, instagramId: true, workspaceId: true, username: true, instagramUserIds: true },
   });
   const accountMap = new Map(accounts.map(a => [a.instagramId, a]));
   const allowed = new Set(accountMap.keys());
@@ -39,6 +40,26 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     for (const event of commentEvents) {
       const account = accountMap.get(event.instagramAccountId);
       if (!account) continue;
+
+      // The account's own comments — including the public replies this tool
+      // posts — must never trigger a campaign, or every reply triggers the
+      // next one. parseCommentEvents only compares against entry.id, which is
+      // not the id Instagram puts on the account's own comments for every
+      // provider, so check every known id and the username here.
+      const author = { id: event.commenterId, username: event.commenterName };
+      if (isOwnAccount(account, author)) {
+        const newId = unknownOwnId(account, author);
+        if (newId) {
+          account.instagramUserIds = [...account.instagramUserIds, newId];
+          await prisma.instagramAccount
+            .update({
+              where: { id: account.id },
+              data: { instagramUserIds: { push: newId } },
+            })
+            .catch(() => {});
+        }
+        continue;
+      }
 
       await queue.add(
         "process-comment",

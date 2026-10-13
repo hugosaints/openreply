@@ -133,6 +133,11 @@ model InstagramAccount {
   name              String?
   provider          InstagramProvider @default(META)
   zernioAccountId   String?
+  // Other ids Instagram uses for this same account. Zernio stores the
+  // app-scoped platformUserId as instagramId, while comments written by the
+  // account arrive with its professional-account id (1784…). Without these the
+  // account's own public replies look like new comments and loop forever.
+  instagramUserIds  String[] @default([])
   accessToken       String
   tokenExpiresAt    DateTime?
   webhookSubscribed Boolean  @default(false)
@@ -243,6 +248,9 @@ model DmLog {
   publicReplyDeliveryUnconfirmed Boolean @default(false)
   publicReplySentAt DateTime?
   publicReplyError  String?
+  // Id of the comment our public reply created. A webhook for this id is our
+  // own reply coming back and must never be processed as a new comment.
+  publicReplyCommentId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -256,6 +264,7 @@ model DmLog {
   @@index([automationId])
   @@index([instagramAccountId])
   @@index([status])
+  @@index([publicReplyCommentId])
 }
 
 // Legacy reconciliation model; currently unwired. Runtime code does not read

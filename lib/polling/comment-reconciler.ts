@@ -40,6 +40,7 @@ import {
   type InstagramContext,
 } from "@/lib/instagram/provider";
 import { matchKeywords } from "@/lib/utils/keyword-matcher";
+import { isOwnAccount } from "@/lib/instagram/self-identity";
 
 // Only consider comments from the last few days — older ones are outside
 // Instagram's private-reply window anyway, so a DM to them would just fail.
@@ -85,6 +86,7 @@ export async function reconcileComments(): Promise<void> {
           id: true,
           instagramId: true,
           username: true,
+          instagramUserIds: true,
           accessToken: true,
           provider: true,
           workspaceId: true,
@@ -134,6 +136,7 @@ async function sweepCampaign({
       id: string;
       instagramId: string;
       username: string;
+      instagramUserIds: string[];
       accessToken: string;
       provider: "META" | "ZERNIO";
       workspaceId: string;
@@ -208,7 +211,7 @@ async function sweepCampaign({
     // keyword, and (c) have no reply from the account owner yet.
     const needsAction = comments.filter((c) => {
       const authorId = c.from?.id;
-      if (!authorId || authorId === account.instagramId) return false;
+      if (!authorId || isOwnAccount(account, c.from ?? {})) return false;
 
       const matched = automation.matchAnyWord
         ? true
@@ -220,8 +223,8 @@ async function sweepCampaign({
       if (!matched) return false;
       stat.matched += 1;
 
-      const ownerReplied = (c.replies?.data ?? []).some(
-        (r) => r.from?.id === account.instagramId
+      const ownerReplied = (c.replies?.data ?? []).some((r) =>
+        isOwnAccount(account, r.from ?? {})
       );
       if (ownerReplied) {
         stat.alreadyReplied += 1;
